@@ -1,0 +1,120 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{8B58F148-78B4-4436-84D0-7DF99C4A370D}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Ruzil3D</RootNamespace>
+    <AssemblyName>Ruzil3D</AssemblyName>
+    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <DocumentationFile>bin\Debug\Ruzil3D.XML</DocumentationFile>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\..\packages\Newtonsoft.Json.9.0.1\lib\net35\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Curves\NamespaceDoc.cs" />
+    <Compile Include="Filters\NamespaceDoc.cs" />
+    <Compile Include="Approximation\EApproximationType.cs" />
+    <Compile Include="Approximation\NamespaceDoc.cs" />
+    <Compile Include="Calculus\Calculus.cs" />
+    <Compile Include="Calculus\EIntegrateRule.cs" />
+    <Compile Include="Calculus\ELimitSide.cs" />
+    <Compile Include="Calculus\LegendrePolynomial.cs" />
+    <Compile Include="Calculus\NamespaceDoc.cs" />
+    <Compile Include="Curves\BernsteinCurve.cs" />
+    <Compile Include="Curves\BezierCurve.cs" />
+    <Compile Include="Curves\CurveDetails.cs" />
+    <Compile Include="Curves\ParametricCurveDistanceCompiler.cs" />
+    <Compile Include="Curves\Beziers.cs" />
+    <Compile Include="Filters\Delegates\BlurFunctionHandler.cs" />
+    <Compile Include="Approximation\CGridApproximation.cs" />
+    <Compile Include="Approximation\CGridPolynomialApproximation.cs" />
+    <Compile Include="Curves\EllipticArcCurve.cs" />
+    <Compile Include="Curves\ParametricCurve.cs" />
+    <Compile Include="Curves\ParametricCurves.cs" />
+    <Compile Include="Curves\PlanarCurve.cs" />
+    <Compile Include="Algebra\NamespaceDoc.cs" />
+    <Compile Include="Algebra\Quaternion.cs" />
+    <Compile Include="Geometry\Circle.cs" />
+    <Compile Include="Algebra\Complex.cs" />
+    <Compile Include="Geometry\NamespaceDoc.cs" />
+    <Compile Include="Geometry\Transformations\Isometry.cs" />
+    <Compile Include="NamespaceDoc.cs" />
+    <Compile Include="Statics\CStatic.cs" />
+    <Compile Include="Approximation\CubicInterpolation.cs" />
+    <Compile Include="Filters\CurveBlurFilter.cs" />
+    <Compile Include="Filters\CurveBlurFilter2.cs" />
+    <Compile Include="Filters\CurveInterpolationCompiler.cs" />
+    <Compile Include="Filters\ExtrapolationMode.cs" />
+    <Compile Include="Filters\BlurCompiler.cs" />
+    <Compile Include="Algebra\Fraction.cs" />
+    <Compile Include="Filters\ICurveApproximation.cs" />
+    <Compile Include="Filters\ICurveInterpolation.cs" />
+    <Compile Include="Approximation\IFunctionApproximation.cs" />
+    <Compile Include="Approximation\IMonotonicFunctionApproximation.cs" />
+    <Compile Include="Filters\InterpolationCompiler.cs" />
+    <Compile Include="Geometry\Line.cs" />
+    <Compile Include="Geometry\Line3D.cs" />
+    <Compile Include="Algebra\Linear.cs" />
+    <Compile Include="Approximation\LinearInterpolation.cs" />
+    <Compile Include="Calculus\LinearSystem.cs" />
+    <Compile Include="Curves\LineCurve.cs" />
+    <Compile Include="Algebra\Matrix.cs" />
+    <Compile Include="Algebra\Matrix3D.cs" />
+    <Compile Include="Geometry\Plane.cs" />
+    <Compile Include="Algebra\Point3D.cs" />
+    <Compile Include="Algebra\PointD.cs" />
+    <Compile Include="Algebra\Polynomial.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Math.cs" />
+    <Compile Include="Statics\NamespaceDoc.cs" />
+    <Compile Include="Statics\TickCounter.cs" />
+    <Compile Include="Filters\SurfaceBlurFilter.cs" />
+    <Compile Include="Geometry\Transformations\Affinity.cs" />
+    <Compile Include="Geometry\Triangle.cs" />
+    <Compile Include="Geometry\Triangle3D.cs" />
+    <Compile Include="Algebra\Vector.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>
