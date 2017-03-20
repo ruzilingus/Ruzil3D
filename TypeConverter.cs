@@ -35,41 +35,89 @@ namespace Ruzil3D
 			throw new ArgumentOutOfRangeException();
 		}
 
+		/// <summary>
+		/// Возвращает 32-битовое целое число со знаком, преобразованное из четырех байтов с указанной позицией в массиве байтов.
+		/// </summary>
+		/// <param name="buffer">Массив байтов.</param>
+		/// <param name="startIndex">Позиция начала в <paramref name="buffer"/>. Если <paramref name="startIndex"/> &lt; 0 то порядок байт считается в обратном направлении.</param>
+		/// <returns>32-битовое целое число со знаком, преобразованное из четырех байтов с указанной позицией в массиве байтов.</returns>
 		public static byte ToByte(byte[] buffer, int startIndex)
 		{
 			return (byte)GetLong(buffer, startIndex, 1);
 		}
-
-		public static short ToInt16(byte[] buffer, int startIndex)
+		
+		/// <summary>
+		/// Возвращает 8-битовое целое число со знаком, преобразованное из четырех байтов с указанной позицией в массиве байтов.
+		/// </summary>
+		/// <param name="buffer">Массив байтов.</param>
+		/// <param name="startIndex">Позиция начала в <paramref name="buffer"/>. Если <paramref name="startIndex"/> &lt; 0 то порядок байт считается в обратном направлении.</param>
+		/// <returns>8-битовое целое число со знаком, преобразованное из четырех байтов с указанной позицией в массиве байтов.</returns>
+		public static sbyte ToSByte(byte[] buffer, int startIndex)
 		{
-			return (short)GetLong(buffer, startIndex, 2);
+			return (sbyte)GetLong(buffer, startIndex, 1);
 		}
-
+		
+		/// <summary>
+		/// Возвращает 32-битовое целое число со знаком, преобразованное из четырех байтов с указанной позицией в массиве байтов.
+		/// </summary>
+		/// <param name="buffer">Массив байтов.</param>
+		/// <param name="startIndex">Позиция начала в <paramref name="buffer"/>. Если <paramref name="startIndex"/> &lt; 0 то порядок байт считается в обратном направлении.</param>
+		/// <returns>32-битовое целое число со знаком, преобразованное из четырех байтов с указанной позицией в массиве байтов.</returns>
 		public static int ToInt32(byte[] buffer, int startIndex)
 		{
 			return (int)GetLong(buffer, startIndex, 4);
 		}
 
+		/// <summary>
+		/// Возвращает 64-битовое целое число со знаком, преобразованное из четырех байтов с указанной позицией в массиве байтов.
+		/// </summary>
+		/// <param name="buffer">Массив байтов.</param>
+		/// <param name="startIndex">Позиция начала в <paramref name="buffer"/>. Если <paramref name="startIndex"/> &lt; 0 то порядок байт считается в обратном направлении.</param>
+		/// <returns>64-битовое целое число со знаком, преобразованное из четырех байтов с указанной позицией в массиве байтов.</returns>
 		public static long ToInt64(byte[] buffer, int startIndex)
 		{
 			return GetLong(buffer, startIndex, 8);
 		}
 
-		public static sbyte ToSByte(byte[] buffer, int startIndex)
+		/// <summary>
+		/// Возвращает 8-битовое целое число без знака, преобразованное из четырех байтов с указанной позицией в массиве байтов.
+		/// </summary>
+		/// <param name="buffer">Массив байтов.</param>
+		/// <param name="startIndex">Позиция начала в <paramref name="buffer"/>. Если <paramref name="startIndex"/> &lt; 0 то порядок байт считается в обратном направлении.</param>
+		/// <returns>8-битовое целое число со знаком, преобразованное из четырех байтов с указанной позицией в массиве байтов.</returns>
+		public static short ToInt16(byte[] buffer, int startIndex)
 		{
-			return (sbyte)GetLong(buffer, startIndex, 1);
+			return (short)GetLong(buffer, startIndex, 2);
 		}
 
+		/// <summary>
+		/// Возвращает 16-битовое целое число без знака, преобразованное из четырех байтов с указанной позицией в массиве байтов.
+		/// </summary>
+		/// <param name="buffer">Массив байтов.</param>
+		/// <param name="startIndex">Позиция начала в <paramref name="buffer"/>. Если <paramref name="startIndex"/> &lt; 0 то порядок байт считается в обратном направлении.</param>
+		/// <returns>16-битовое целое число со знаком, преобразованное из четырех байтов с указанной позицией в массиве байтов.</returns>
 		public static ushort ToUInt16(byte[] buffer, int startIndex)
 		{
 			return (ushort)GetLong(buffer, startIndex, 2);
 		}
 
+		/// <summary>
+		/// Возвращает 32-битовое целое число без знака, преобразованное из четырех байтов с указанной позицией в массиве байтов.
+		/// </summary>
+		/// <param name="buffer">Массив байтов.</param>
+		/// <param name="startIndex">Позиция начала в <paramref name="buffer"/>. Если <paramref name="startIndex"/> &lt; 0 то порядок байт считается в обратном направлении.</param>
+		/// <returns>32-битовое целое число со знаком, преобразованное из четырех байтов с указанной позицией в массиве байтов.</returns>
 		public static uint ToUInt32(byte[] buffer, int startIndex)
 		{
 			return (uint)GetLong(buffer, startIndex, 4);
 		}
 
+		/// <summary>
+		/// Возвращает 64-битовое целое число без знака, преобразованное из четырех байтов с указанной позицией в массиве байтов.
+		/// </summary>
+		/// <param name="buffer">Массив байтов.</param>
+		/// <param name="startIndex">Позиция начала в <paramref name="buffer"/>. Если <paramref name="startIndex"/> &lt; 0 то порядок байт считается в обратном направлении.</param>
+		/// <returns>64-битовое целое число со знаком, преобразованное из четырех байтов с указанной позицией в массиве байтов.</returns>
 		public static ulong ToUInt64(byte[] buffer, int startIndex)
 		{
 			return (ulong)GetLong(buffer, startIndex, 8);
