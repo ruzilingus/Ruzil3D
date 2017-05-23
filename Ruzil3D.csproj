@@ -112,7 +112,6 @@
     <Compile Include="Geometry\Triangle.cs" />
     <Compile Include="Geometry\Triangle3D.cs" />
     <Compile Include="Algebra\Vector.cs" />
-    <Compile Include="TypeConverter.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
