@@ -1497,7 +1497,8 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Возвращает многочлен представляющий производную от исходного.
 		/// </summary>
-		/// <returns>Многочлен производной.</returns>
+		/// <param name="order">Степень производной.</param>
+		/// <returns>Многочлен представляющий производную от исходного.</returns>
 		public Polynomial GetDerivative(int order = 1)
 		{
 			if (A.Length == order)
