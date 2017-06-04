@@ -611,8 +611,8 @@ namespace Ruzil3D.Algebra
 			unchecked
 			{
 				var hashCode = Line1.GetHashCode();
-				hashCode = (hashCode*397) ^ Line2.GetHashCode();
-				hashCode = (hashCode*397) ^ Line3.GetHashCode();
+				hashCode = (hashCode*401) ^ Line2.GetHashCode();
+				hashCode = (hashCode*409) ^ Line3.GetHashCode();
 				return hashCode;
 			}
 		}

@@ -448,7 +448,7 @@ namespace Ruzil3D.Algebra
 		{
 			unchecked
 			{
-				return (W.GetHashCode()*397) ^ U.GetHashCode();
+				return (W.GetHashCode()*433) ^ U.GetHashCode();
 			}
 		}
 

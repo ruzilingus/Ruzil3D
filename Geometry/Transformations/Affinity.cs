@@ -250,7 +250,7 @@ namespace Ruzil3D.Geometry
 		{
 			unchecked
 			{
-				return (Matrix.GetHashCode()*397) ^ Center.GetHashCode();
+				return (Matrix.GetHashCode()*439) ^ Center.GetHashCode();
 			}
 		}
 

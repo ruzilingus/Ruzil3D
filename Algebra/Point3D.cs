@@ -405,8 +405,8 @@ namespace Ruzil3D.Algebra
 			unchecked
 			{
 				var hashCode = X.GetHashCode();
-				hashCode = (hashCode * 397) ^ Y.GetHashCode();
-				hashCode = (hashCode * 397) ^ Z.GetHashCode();
+				hashCode = (hashCode * 419) ^ Y.GetHashCode();
+				hashCode = (hashCode * 421) ^ Z.GetHashCode();
 				return hashCode;
 			}
 		}
