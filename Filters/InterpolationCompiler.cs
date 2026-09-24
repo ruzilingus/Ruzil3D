@@ -1,4 +1,5 @@
-﻿using Ruzil3D.Algebra;
+﻿using System;
+using Ruzil3D.Algebra;
 
 namespace Ruzil3D.Filters
 {
@@ -88,6 +89,18 @@ namespace Ruzil3D.Filters
 
         private void Compile(PointD[] points, ExtrapolationMode mode)
         {
+            if (points == null)
+            {
+                throw new ArgumentNullException(nameof(points));
+            }
+
+            //С одной точкой поиск отрезка не завершался, а при нулевой длине области определения
+            //продолжение функции за её пределы делило на ноль.
+            if (points.Length < 2 || !(points[points.Length - 1].X > 0))
+            {
+                throw new ArgumentException("Функция должна быть задана не менее чем двумя точками, а аргумент последней точки должен быть больше нуля.", nameof(points));
+            }
+
             _points = points;
             _mode = mode;
 

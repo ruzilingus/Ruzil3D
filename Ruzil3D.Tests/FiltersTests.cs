@@ -1,4 +1,5 @@
-﻿using Ruzil3D.Algebra;
+﻿using System;
+using Ruzil3D.Algebra;
 using Ruzil3D.Filters;
 using Xunit;
 
@@ -28,6 +29,25 @@ namespace Ruzil3D.Tests
 			Assert.Equal(5, compiler.DMax, 12);
 			TestUtil.Near(new Point3D(1, 0, 0), compiler.GetValue3D(1));
 			TestUtil.Near(new Point3D(2, 1, 0), compiler.GetValue3D(3));
+		}
+
+		[Fact]
+		public void InterpolationCompiler_RejectsDegenerateInput()
+		{
+			// Прежде с одной точкой GetValue не завершался.
+			Assert.Throws<ArgumentException>(() => new InterpolationCompiler(new[] {new PointD(0, 1)}));
+			Assert.Throws<ArgumentException>(() => new InterpolationCompiler(new[] {new PointD(0, 1), new PointD(0, 2)}));
+			Assert.Throws<ArgumentException>(() => new InterpolationCompiler(new PointD[0]));
+			Assert.Throws<ArgumentNullException>(() => new InterpolationCompiler(null));
+		}
+
+		[Fact]
+		public void InterpolationCompiler_InterpolatesBetweenPoints()
+		{
+			var compiler = new InterpolationCompiler(new[] {new PointD(0, 1), new PointD(2, 5), new PointD(3, 5)});
+
+			Assert.Equal(3, compiler.GetValue(1), 12);
+			Assert.Equal(5, compiler.GetValue(2.5), 12);
 		}
 
 		[Fact]

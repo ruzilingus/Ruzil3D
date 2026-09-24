@@ -40,6 +40,29 @@ namespace Ruzil3D.Tests
 			Assert.InRange(value, 0.2 - tolerance, 0.2 + tolerance);
 		}
 
+		[Theory]
+		[MemberData(nameof(Rules))]
+		public void Integrate_ShortIntervalFarFromZero_DoesNotHang(EIntegrateRule rule, double tolerance)
+		{
+			// Шаг интегрирования меньше точности представления аргумента: прежде цикл t += step не завершался.
+			const double a = 0.5;
+			const double b = 0.5 + 1e-15;
+
+			var value = TestUtil.CompletesWithin(() => Calculus.Calculus.Integrate(x => 1, a, b, rule));
+
+			Assert.InRange(value/(b - a), 1 - 1e-9, 1 + 1e-9);
+		}
+
+		[Theory]
+		[MemberData(nameof(Rules))]
+		public void Integrate_FarFromZero_UsesExactPanelCount(EIntegrateRule rule, double tolerance)
+		{
+			// Прежде из-за накопления ошибки в t += step на этом отрезке вычислялась лишняя панель (результат 1.001).
+			var value = TestUtil.CompletesWithin(() => Calculus.Calculus.Integrate(x => 1, 1e10, 1e10 + 1, rule));
+
+			Assert.InRange(value, 1 - 1e-9, 1 + 1e-9);
+		}
+
 		[Fact]
 		public void Integrate_ReversedBoundsChangeSign()
 		{

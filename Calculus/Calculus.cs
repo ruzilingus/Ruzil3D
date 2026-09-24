@@ -18,7 +18,6 @@ namespace Ruzil3D.Calculus
 		private const int RectangleCount = 1000;
 		private const double RectangleStep = 1D/RectangleCount;
 		private const double RectangleStart = RectangleStep/2D;
-		private const double RectangleStop = 1D;
 		private const double RectangleNorm = RectangleStep;
 
 		#endregion
@@ -28,7 +27,6 @@ namespace Ruzil3D.Calculus
 		private const int TrapezoidalCount = 1000;
 		private const double TrapezoidalStep = 1D/TrapezoidalCount;
 		private const double TrapezoidalStart = 0;
-		private const double TrapezoidalStop = 1D - TrapezoidalStep/2D;
 		private const double TrapezoidalNorm = TrapezoidalStep;
 
 		#endregion
@@ -41,7 +39,6 @@ namespace Ruzil3D.Calculus
 		private const double Gauss2Offset1 = (1 - 1/Math.Sqrt3)*Gauss2Offset0;
 		private const double Gauss2Start = Gauss2Offset1;
 		private const double Gauss2Offset2 = 2/Math.Sqrt3*Gauss2Offset0;
-		private const double Gauss2Stop = 1 - Gauss2Offset0 + Gauss2Offset1;
 
 		#endregion
 
@@ -51,7 +48,6 @@ namespace Ruzil3D.Calculus
 		private const double SimpsonStep = 1D/SimpsonCount;
 		private const double SimpsonHalfStep = SimpsonStep/2;
 		private const double SimpsonStart = 0;
-		private const double SimpsonStop = 1 - SimpsonHalfStep;
 		private const double SimpsonNorm = SimpsonStep/3;
 
 		#endregion
@@ -60,7 +56,7 @@ namespace Ruzil3D.Calculus
 		{
 			private static readonly LegendrePolynomial Polynom = new LegendrePolynomial(3);
 
-			private const int Count = 100;
+			public const int Count = 100;
 			public const double Step = 1D/Count;
 			private const double HalfStep = Step/2;
 
@@ -77,7 +73,6 @@ namespace Ruzil3D.Calculus
 			public static readonly double C1 = Weight1/Weight0;
 
 			public static readonly double Start = D;
-			public static readonly double Stop = 1 - HalfStep + D;
 			public static readonly double Norm = HalfStep*Weight0;
 		}
 
@@ -85,7 +80,7 @@ namespace Ruzil3D.Calculus
 		{
 			private static readonly LegendrePolynomial Polynom = new LegendrePolynomial(5);
 
-			private const int Count = 40;
+			public const int Count = 40;
 			public const double Step = 1D/Count;
 			private const double HalfStep = Step/2;
 
@@ -108,7 +103,6 @@ namespace Ruzil3D.Calculus
 			public static readonly double C1 = Weight1/Weight0;
 			public static readonly double C2 = Weight2/Weight0;
 			public static readonly double Start = D;
-			public static readonly double Stop = 1 - HalfStep + D;
 			public static readonly double Norm = HalfStep*Weight0;
 		}
 
@@ -116,7 +110,7 @@ namespace Ruzil3D.Calculus
 		{
 			private static readonly LegendrePolynomial Polynom = new LegendrePolynomial(6);
 
-			private const int Count = 25;
+			public const int Count = 25;
 			public const double Step = 1D/Count;
 			private const double HalfStep = Step/2;
 
@@ -140,7 +134,6 @@ namespace Ruzil3D.Calculus
 			public static readonly double C1 = Weight1/Weight0;
 			public static readonly double C2 = Weight2/Weight0;
 			public static readonly double Start = D;
-			public static readonly double Stop = 1 - HalfStep + D;
 			public static readonly double Norm = HalfStep*Weight0;
 		}
 
@@ -148,7 +141,7 @@ namespace Ruzil3D.Calculus
 		{
 			private static readonly LegendrePolynomial Polynom = new LegendrePolynomial(10);
 
-			private const int Count = 10;
+			public const int Count = 10;
 			public const double Step = 1D/Count;
 			private const double HalfStep = Step/2;
 
@@ -183,7 +176,6 @@ namespace Ruzil3D.Calculus
 			public static readonly double C4 = Weight4/Weight0;
 
 			public static readonly double Start = D;
-			public static readonly double Stop = 1 - HalfStep + D;
 			public static readonly double Norm = HalfStep*Weight0;
 		}
 
@@ -196,13 +188,14 @@ namespace Ruzil3D.Calculus
 			var offset = a;
 
 			var start = scale*RectangleStart + offset;
-			var stop = scale*RectangleStop + offset;
 			var step = scale*RectangleStep;
 
+			//Счётчик цикла целочисленный: при накоплении t += step цикл не завершался,
+			//если шаг меньше точности представления t (короткий отрезок вдали от нуля).
 			var sum = 0D;
-			for (var t = start; t < stop; t += step)
+			for (var i = 0; i < RectangleCount; i++)
 			{
-				sum += function(t);
+				sum += function(start + i*step);
 			}
 
 			return sum*scale*RectangleNorm;
@@ -214,13 +207,12 @@ namespace Ruzil3D.Calculus
 			var offset = a;
 
 			var start = scale*TrapezoidalStart + offset;
-			var stop = scale*TrapezoidalStop + offset;
 			var step = scale*TrapezoidalStep;
 
 			var sum = (function(b) - function(a))/2D;
-			for (var t = start; t < stop; t += step)
+			for (var i = 0; i < TrapezoidalCount; i++)
 			{
-				sum += function(t);
+				sum += function(start + i*step);
 			}
 
 			return sum*scale*TrapezoidalNorm;
@@ -234,13 +226,13 @@ namespace Ruzil3D.Calculus
 			var offset = a;
 
 			var start = scale*SimpsonStart + offset;
-			var stop = scale*SimpsonStop + offset;
 			var step = scale*SimpsonStep;
 			var halfStep = scale*SimpsonHalfStep;
 
 			var sum = (function(b) - function(a))/2D;
-			for (var t = start; t < stop; t += step)
+			for (var i = 0; i < SimpsonCount; i++)
 			{
+				var t = start + i*step;
 				sum += function(t) + 2D*function(t + halfStep);
 			}
 
@@ -253,14 +245,14 @@ namespace Ruzil3D.Calculus
 			var offset = a;
 
 			var start = scale*Gauss2Start + offset;
-			var stop = scale*Gauss2Stop + offset;
 			var step = scale*Gauss2Step;
 
 			var s0 = scale*Gauss2Offset2;
 
 			var sum = 0D;
-			for (var t = start; t < stop; t += step)
+			for (var i = 0; i < Gauss2Count; i++)
 			{
+				var t = start + i*step;
 				sum += function(t) + function(t + s0);
 			}
 
@@ -273,15 +265,15 @@ namespace Ruzil3D.Calculus
 			var offset = a;
 
 			var start = scale*Gauss3.Start + offset;
-			var stop = scale*Gauss3.Stop + offset;
 			var step = scale*Gauss3.Step;
 
 			var s0 = scale*Gauss3.S0;
 			var d1 = scale*Gauss3.D1;
 
 			var sum = 0D;
-			for (var t = start; t < stop; t += step)
+			for (var i = 0; i < Gauss3.Count; i++)
 			{
+				var t = start + i*step;
 				sum +=
 					function(t) + function(t + s0) +
 					Gauss3.C1*function(t + d1);
@@ -295,7 +287,6 @@ namespace Ruzil3D.Calculus
 			var offset = a;
 
 			var start = scale*Gauss5.Start + offset;
-			var stop = scale*Gauss5.Stop + offset;
 			var step = scale*Gauss5.Step;
 
 			var s0 = scale*Gauss5.S0;
@@ -304,8 +295,9 @@ namespace Ruzil3D.Calculus
 			var d2 = scale*Gauss5.D2;
 
 			var sum = 0D;
-			for (var t = start; t < stop; t += step)
+			for (var i = 0; i < Gauss5.Count; i++)
 			{
+				var t = start + i*step;
 				sum +=
 					function(t) + function(t + s0) +
 					Gauss5.C1*(function(t + d1) + function(t + s1)) +
@@ -321,7 +313,6 @@ namespace Ruzil3D.Calculus
 			var offset = a;
 
 			var start = scale*Gauss6.Start + offset;
-			var stop = scale*Gauss6.Stop + offset;
 			var step = scale*Gauss6.Step;
 
 			var s0 = scale*Gauss6.S0;
@@ -331,8 +322,9 @@ namespace Ruzil3D.Calculus
 			var d2 = scale*Gauss6.D2;
 
 			var sum = 0D;
-			for (var t = start; t < stop; t += step)
+			for (var i = 0; i < Gauss6.Count; i++)
 			{
+				var t = start + i*step;
 				sum +=
 					function(t) + function(t + s0) +
 					Gauss6.C1*(function(t + d1) + function(t + s1)) +
@@ -348,7 +340,6 @@ namespace Ruzil3D.Calculus
 			var offset = a;
 
 			var start = scale*Gauss10.Start + offset;
-			var stop = scale*Gauss10.Stop + offset;
 			var step = scale*Gauss10.Step;
 
 
@@ -363,8 +354,9 @@ namespace Ruzil3D.Calculus
 			var d4 = scale*Gauss10.D4;
 
 			var sum = 0D;
-			for (var t = start; t < stop; t += step)
+			for (var i = 0; i < Gauss10.Count; i++)
 			{
+				var t = start + i*step;
 				sum +=
 					function(t) + function(t + s0) +
 					Gauss10.C1*(function(t + d1) + function(t + s1)) +

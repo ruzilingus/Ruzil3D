@@ -51,16 +51,32 @@ namespace Ruzil3D.Approximation
 			return result.ToArray();
 		}
 
+		private static void CheckLength(PointD[] points)
+		{
+			//Сетка из одного узла не содержит ни одной клетки, а поиск клетки для неё не завершался.
+			if (points.Length < 2)
+			{
+				throw new ArgumentException("Сетка должна содержать не менее двух различных узлов.", nameof(points));
+			}
+		}
+
 		#endregion
 
 		/// <summary>
 		/// Инициализирует новый экземпляр класса <see cref="CGridApproximation"/> из перечислителя структур <see cref="PointD"/>.
 		/// </summary>
 		/// <param name="points">Перечислитель структур <see cref="PointD"/>.</param>
-		/// <exception cref="ArgumentException">Нескольким одинаковым аргументам X соответствуют разные значения Y.</exception>
+		/// <exception cref="ArgumentNullException">Значение параметра <paramref name="points"/> равно <b>null</b>.</exception>
+		/// <exception cref="ArgumentException">Нескольким одинаковым аргументам X соответствуют разные значения Y или задано меньше двух различных узлов.</exception>
 		protected CGridApproximation(IEnumerable<PointD> points)
 		{
+			if (points == null)
+			{
+				throw new ArgumentNullException(nameof(points));
+			}
+
 			Points = Format(points);
+			CheckLength(Points);
 
 			LArgument = Points[0].X;
 			RArgument = Points[Points.Length - 1].X;
@@ -71,9 +87,17 @@ namespace Ruzil3D.Approximation
 		/// </summary>
 		/// <param name="points">Массив структур <see cref="PointD"/>.</param>
 		/// <param name="check">Условие указывающее на необходимость проверить исходные данные на корректность.</param>
+		/// <exception cref="ArgumentNullException">Значение параметра <paramref name="points"/> равно <b>null</b>.</exception>
+		/// <exception cref="ArgumentException">Задано меньше двух узлов или при проверке (<paramref name="check"/> = <b>true</b>) нескольким одинаковым аргументам X соответствуют разные значения Y.</exception>
 		protected CGridApproximation(PointD[] points, bool check = false)
 		{
+			if (points == null)
+			{
+				throw new ArgumentNullException(nameof(points));
+			}
+
 			Points = check ? Format(points) : points;
+			CheckLength(Points);
 
 			LArgument = Points[0].X;
 			RArgument = Points[Points.Length - 1].X;
@@ -125,7 +149,7 @@ namespace Ruzil3D.Approximation
 			var min = 1;
 			var max = Points.Length - 1;
 
-			while (min != max)
+			while (min < max)
 			{
 				var mid = (min + max)/2;
 

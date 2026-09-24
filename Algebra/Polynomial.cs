@@ -1219,6 +1219,7 @@ namespace Ruzil3D.Algebra
 		private static double FindRoot(Polynomial polynom, double a, double b, Polynomial derivative = null)
 		{
 			//Проверка начальных условий
+			if (double.IsNaN(a) || double.IsNaN(b)) return double.NaN;
 			if (a > b) return double.NaN;
 			var aValue = polynom.GetValue(a);
 			if (aValue.Equals(0D)) return a;
@@ -1254,14 +1255,18 @@ namespace Ruzil3D.Algebra
 			var abs = System.Math.Abs(y);
 
 			derivative = derivative ?? polynom.GetDerivative();
-			
-			do
+
+			//Итерации продолжаются, пока модуль значения строго убывает. Сравнение записано через отрицание,
+			//чтобы NaN (например, 0/0 в кратном корне) останавливал поиск: сравнение с NaN всегда ложно,
+			//и прежнее условие absNext >= abs приводило к бесконечному циклу.
+			const int maxIterations = 10000;
+			for (var i = 0; i < maxIterations; i++)
 			{
 				var xNext = x - y / derivative.GetValue(x);
 				var yNext = polynom.GetValue(xNext);
 				var absNext = System.Math.Abs(yNext);
 
-				if (absNext >= abs)
+				if (!(absNext < abs))
 				{
 					return x;
 				}
@@ -1270,7 +1275,8 @@ namespace Ruzil3D.Algebra
 				y = yNext;
 				abs = absNext;
 			}
-			while (true);
+
+			return x;
 		}
 
 
@@ -1301,16 +1307,42 @@ namespace Ruzil3D.Algebra
 					//todo Метод нужно протестировать
 					return ResolveTesseractR(A[4], A[3], A[2], A[1], A[0], multiple);
 			}
-			
-			//Находим критические точки и точки перегиба функции.
-			var derivative1 = GetDerivative();
-			var derivative2 = derivative1.GetDerivative();
-			var roots1 = derivative1.Resolve();
-			var roots2 = derivative2.Resolve();
 
+			//Корни производных вычисляются снизу вверх, и каждая производная решается один раз.
+			//Прежде каждый уровень заново решал обе свои производные, и время росло экспоненциально со степенью.
+			var chain = new List<Polynomial> { this };
+			while (chain[chain.Count - 1].Degree > 3)
+			{
+				chain.Add(chain[chain.Count - 1].GetDerivative());
+			}
+
+			var roots = new double[chain.Count][];
+			for (var k = chain.Count - 1; k > 0; k--)
+			{
+				var polynom = chain[k];
+				roots[k] = polynom.Degree <= 4
+					? polynom.Resolve()
+					: polynom.Resolve(true, chain[k + 1], roots[k + 1], roots[k + 2]);
+			}
+
+			return Resolve(multiple, chain[1], roots[1], roots[2]);
+		}
+
+		/// <summary>
+		/// Находит вещественные корни многочлена методом Ньютона между его критическими точками и точками перегиба.
+		/// </summary>
+		/// <param name="multiple">Параметр указывающий на необходимость учитывать кратность корней.</param>
+		/// <param name="derivative1">Первая производная многочлена.</param>
+		/// <param name="roots1">Корни первой производной (критические точки).</param>
+		/// <param name="roots2">Корни второй производной (точки перегиба).</param>
+		/// <returns>Корни многочлена</returns>
+		private double[] Resolve(bool multiple, Polynomial derivative1, double[] roots1, double[] roots2)
+		{
+			//Находим критические точки и точки перегиба функции.
+			//NaN (например, после переполнения в формулах для производных) о них ничего не говорит и пропускается.
 			var list = new List<double> { double.NegativeInfinity, double.PositiveInfinity };
-			list.AddRange(roots1);
-			list.AddRange(roots2);
+			list.AddRange(roots1.Where(root => !double.IsNaN(root)));
+			list.AddRange(roots2.Where(root => !double.IsNaN(root)));
 			list.Sort();
 
 			var result = new List<double>();

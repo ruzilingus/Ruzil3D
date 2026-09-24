@@ -1,4 +1,5 @@
-﻿using Ruzil3D.Algebra;
+﻿using System.Linq;
+using Ruzil3D.Algebra;
 using Xunit;
 
 namespace Ruzil3D.Tests
@@ -52,6 +53,33 @@ namespace Ruzil3D.Tests
 			var roots = new Polynomial(2, -3, 1).Resolve();
 
 			Assert.Equal(new[] {1D, 2D}, roots);
+		}
+
+		[Fact]
+		public void Resolve_QuinticWithSmallRoots()
+		{
+			var roots = Polynomial.GetPolynomialByRoots(-2, -1, 0, 1, 2).Resolve();
+
+			Assert.Equal(5, roots.Length);
+			Assert.Equal(new[] {-2D, -1D, 0D, 1D, 2D}, roots.Select(root => System.Math.Round(root, 9)).ToArray());
+		}
+
+		[Fact]
+		public void Resolve_HugeCoefficients_DoesNotHang()
+		{
+			// Прежде NaN в критических точках (переполнение в формулах для производной) зацикливал метод Ньютона.
+			var polynomial = Polynomial.GetPolynomialByRoots(1, 2, 3, 4, 5)*1e60;
+
+			TestUtil.CompletesWithin(() => polynomial.Resolve());
+		}
+
+		[Fact]
+		public void Resolve_HighDegree_IsNotExponential()
+		{
+			// Прежде каждый уровень заново решал обе свои производные: степень 32 решалась около 3 секунд, степень 40 — минуты.
+			var polynomial = Polynomial.GetPolynomialByRoots(Enumerable.Range(1, 40).Select(i => i/10D).ToArray());
+
+			TestUtil.CompletesWithin(() => polynomial.Resolve(), 5000);
 		}
 	}
 }

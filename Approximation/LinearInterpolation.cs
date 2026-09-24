@@ -10,19 +10,22 @@ namespace Ruzil3D.Approximation
 	public class LinearInterpolation : CGridPolynomialApproximation
 	{
 		/// <summary>
-		/// Инициализирует новый экземпляр класса <see cref="CubicInterpolation"/> из перечислителя структур <see cref="PointD"/>.
+		/// Инициализирует новый экземпляр класса <see cref="LinearInterpolation"/> из перечислителя структур <see cref="PointD"/>.
 		/// </summary>
 		/// <param name="points">Перечислитель структур <see cref="PointD"/>.</param>
-		/// <exception cref="ArgumentException">Нескольким одинаковым аргументам X соответствуют разные значения Y.</exception>
+		/// <exception cref="ArgumentNullException">Значение параметра <paramref name="points"/> равно <b>null</b>.</exception>
+		/// <exception cref="ArgumentException">Нескольким одинаковым аргументам X соответствуют разные значения Y или задано меньше двух различных узлов.</exception>
 		public LinearInterpolation(IEnumerable<PointD> points) : base(points)
 		{
 		}
 
 		/// <summary>
-		/// Инициализирует новый экземпляр класса <see cref="CubicInterpolation"/> из массива структур <see cref="PointD"/>.
+		/// Инициализирует новый экземпляр класса <see cref="LinearInterpolation"/> из массива структур <see cref="PointD"/>.
 		/// </summary>
 		/// <param name="points">Массив структур <see cref="PointD"/>.</param>
 		/// <param name="check">Условие указывающее на необходимость проверить исходные данные на корректность.</param>
+		/// <exception cref="ArgumentNullException">Значение параметра <paramref name="points"/> равно <b>null</b>.</exception>
+		/// <exception cref="ArgumentException">Задано меньше двух узлов или при проверке (<paramref name="check"/> = <b>true</b>) нескольким одинаковым аргументам X соответствуют разные значения Y.</exception>
 		public LinearInterpolation(PointD[] points, bool check = false) : base(points, check)
 		{
 		}

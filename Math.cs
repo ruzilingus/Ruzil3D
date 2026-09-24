@@ -638,6 +638,7 @@ namespace Ruzil3D
 		/// <param name="num1">Первое число.</param>
 		/// <param name="num2">Второе число.</param>
 		/// <returns>Наибольший общий делитель.</returns>
+		/// <exception cref="OverflowException">Промежуточные вычисления вышли за пределы точности дробей.</exception>
 		public static Fraction GreatestDivisor(Fraction num1, Fraction num2)
 		{
 			num1 = Abs(num1);
@@ -657,15 +658,29 @@ namespace Ruzil3D
 			var n1 = num1 > num2 ? num1 : num2;
 			var n2 = num1 < num2 ? num1 : num2;
 
-			do
+			//В алгоритме Евклида остаток всегда строго меньше делителя. Если это не так, то при вычислениях
+			//произошло переполнение, и без проверки цикл не завершался. Ограничение числа шагов — страховка.
+			const int maxIterations = 10000;
+			for (var i = 0; i < maxIterations; i++)
 			{
 				Fraction rem;
 				DivRem(n1, n2, out rem);
+
+				if (Fraction.IsNaN(rem) || !(Abs(rem) < Abs(n2)))
+				{
+					throw new OverflowException("Не удалось найти наибольший общий делитель: промежуточные вычисления вышли за пределы точности дробей.");
+				}
+
 				n1 = n2;
 				n2 = rem;
-			} while (!n2.Equals(Fraction.Empty));
 
-			return n1;
+				if (n2.Equals(Fraction.Empty))
+				{
+					return n1;
+				}
+			}
+
+			throw new OverflowException("Не удалось найти наибольший общий делитель за " + maxIterations + " шагов.");
 		}
 
 		/// <summary>

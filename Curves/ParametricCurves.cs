@@ -50,9 +50,16 @@ namespace Ruzil3D.Curves
 		/// </summary>
 		/// <param name="distance">Параметр кривой.</param>
 		/// <returns>Индекс кривой.</returns>
+		/// <exception cref="InvalidOperationException">Последовательность не содержит кривых.</exception>
 		/// <exception cref="ArgumentOutOfRangeException">Аргумент находится вне области определения функции.</exception>
 		private int GetIndex(double distance)
 		{
+			if (Compilers.Length == 0)
+			{
+				//Без этой проверки поиск по пустой последовательности не завершался.
+				throw new InvalidOperationException("Последовательность не содержит кривых.");
+			}
+
 			if (distance < 0 || distance > Length)
 			{
 				throw new ArgumentOutOfRangeException(nameof(distance),
@@ -62,7 +69,7 @@ namespace Ruzil3D.Curves
 			var min = 1;
 			var max = Lengths.Length - 1;
 
-			while (min != max)
+			while (min < max)
 			{
 				var mid = (min + max)/2;
 
@@ -134,6 +141,8 @@ namespace Ruzil3D.Curves
 		/// </summary>
 		/// <param name="distance">Расстояние от начальной точки кривой.</param>
 		/// <returns>Координаты точки на кривой представленной структурой <see cref="Point3D"/>.</returns>
+		/// <exception cref="InvalidOperationException">Последовательность не содержит кривых.</exception>
+		/// <exception cref="ArgumentOutOfRangeException">Расстояние находится вне отрезка [0, <see cref="Length"/>].</exception>
 		public Point3D GetValue(double distance)
 		{
 			var idx = GetIndex(distance);
@@ -149,6 +158,8 @@ namespace Ruzil3D.Curves
 		/// </summary>
 		/// <param name="distance">Расстояние от начальной точки кривой.</param>
 		/// <returns>Детальная характеристика кривой в точке.</returns>
+		/// <exception cref="InvalidOperationException">Последовательность не содержит кривых.</exception>
+		/// <exception cref="ArgumentOutOfRangeException">Расстояние находится вне отрезка [0, <see cref="Length"/>].</exception>
 		public CurveDetails<T> GetDetails(double distance)
 		{
 			var idx = GetIndex(distance);
@@ -210,19 +221,18 @@ namespace Ruzil3D.Curves
 			object IEnumerator.Current => Current;
 		}
 
-		private CurveEnumerator _enumerator;
-		private CurveEnumerator Enumerator => _enumerator ?? (_enumerator = new CurveEnumerator(Compilers));
-
 		#endregion
 
 
 		/// <summary>
 		/// Возвращает <see cref="IEnumerator{T}"/>.
 		/// </summary>
-		/// <returns></returns>
+		/// <returns>Новый перечислитель кривых последовательности.</returns>
 		public IEnumerator<T> GetEnumerator()
 		{
-			return Enumerator;
+			//Каждый вызов возвращает собственный перечислитель: общий перечислитель ломал вложенные
+			//и одновременные обходы коллекции (вложенный foreach не завершался).
+			return new CurveEnumerator(Compilers);
 		}
 
 		/// <summary>
