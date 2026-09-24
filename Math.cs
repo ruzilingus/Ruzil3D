@@ -485,7 +485,8 @@ namespace Ruzil3D
 		/// <returns>Абсолютное значение дроби.</returns>
 		public static Fraction Abs(Fraction value)
 		{
-			return new Fraction(Abs(value.Numerator), Abs(value.Denominator), value.Order);
+			//Смена знака дроби учитывает числитель long.MinValue: прежде Abs(long.MinValue) выбрасывал OverflowException.
+			return value.Numerator < 0L ? -value : value;
 		}
 
 		#endregion
@@ -663,10 +664,12 @@ namespace Ruzil3D
 			const int maxIterations = 10000;
 			for (var i = 0; i < maxIterations; i++)
 			{
-				Fraction rem;
-				DivRem(n1, n2, out rem);
+				//Остаток вычисляется точно, без частного (оно может не поместиться в long). Если точный остаток
+				//не представим дробью, приближённый остаток дал бы бессмысленный результат.
+				bool exact;
+				var rem = Fraction.Remainder(n1, n2, out exact);
 
-				if (Fraction.IsNaN(rem) || !(Abs(rem) < Abs(n2)))
+				if (!exact || Fraction.IsNaN(rem) || !(Abs(rem) < Abs(n2)))
 				{
 					throw new OverflowException("Не удалось найти наибольший общий делитель: промежуточные вычисления вышли за пределы точности дробей.");
 				}
@@ -687,10 +690,11 @@ namespace Ruzil3D
 		/// Вычисляет частное двух дробных чисел и возвращает остаток в выходном параметре.
 		/// </summary>
 		/// <param name="a">Значение типа <see cref="Fraction"/>, содержащее делимое.</param>
-		/// <param name="b">Значение типа <see cref="Fraction"/>, представляющее полученный остаток.</param>
-		/// <param name="result">Значение типа  <see cref="Fraction"/>, представляющее полученный остаток.</param>
-		/// <returns>Значение типа <see cref="Fraction"/>, содержащее частное указанных дробных чисел.</returns>
+		/// <param name="b">Значение типа <see cref="Fraction"/>, содержащее делитель.</param>
+		/// <param name="result">Значение типа <see cref="Fraction"/>, представляющее полученный остаток: <paramref name="a"/> - частное·<paramref name="b"/>. Его знак совпадает со знаком <paramref name="a"/>.</param>
+		/// <returns>Значение типа <see cref="long"/>, содержащее частное указанных дробных чисел, округлённое к нулю.</returns>
 		/// <exception cref="DivideByZeroException"> Значение параметра <paramref name="b"/> равно нулю.</exception>
+		/// <exception cref="OverflowException">Частное не помещается в 64-битовое целое число со знаком или не является конечным числом.</exception>
 		public static long DivRem(Fraction a, Fraction b, out Fraction result)
 		{
 			if (Fraction.IsEmpty(b))
@@ -698,8 +702,10 @@ namespace Ruzil3D
 				throw new DivideByZeroException();
 			}
 
-			var div = (long) (a/b);
-			result = a - div*b;
+			//Частное и остаток вычисляются точно. Прежде частное бралось через (long)(double):
+			//DivRem(2^53 + 1, 1) давало частное 2^53 и остаток 0.
+			var div = Fraction.TruncatedQuotient(a, b);
+			result = a%b;
 			return div;
 		}
 
