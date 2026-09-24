@@ -58,13 +58,14 @@ namespace Ruzil3D.Utility
 		{
 			var idx = sup ? SupIdx : SubIdx;
 			var result = "";
-			var abs = Abs(num);
+			//Модуль вычисляется в long: модуль int.MinValue не представим в int, и прежде выбрасывалось OverflowException.
+			var abs = Abs((long) num);
 
 			do
 			{
-				int rem;
-				abs = DivRem(abs, 10, out rem);
-				result = idx[rem] + result;
+				long rem;
+				abs = DivRem(abs, 10L, out rem);
+				result = idx[(int) rem] + result;
 			} while (abs > 0);
 
 			if (num < 0)
@@ -123,14 +124,41 @@ namespace Ruzil3D.Utility
 			return true;
 		}
 
+		/// <summary>
+		/// Пытается представить число в виде k/i·10ⁿ, где i — знаменатель от 500 до 999.
+		/// </summary>
+		/// <param name="value">Исходное число.</param>
+		/// <param name="accuracy">Относительная точность совпадения: 10^(-accuracy).</param>
+		/// <returns>Дробь или <see cref="Fraction.NaN"/>, если число не представимо такой дробью.</returns>
 		private static Fraction GetRationalFraction(double value, int accuracy = 14)
 		{
+			//Прежде для нуля порядок равнялся −∞ и ответ получался только за счёт переполнений,
+			//а для NaN метод Sign выбрасывал исключение.
+			if (value.Equals(0D))
+			{
+				return Fraction.Empty;
+			}
+
+			if (double.IsNaN(value) || double.IsInfinity(value))
+			{
+				return Fraction.NaN;
+			}
+
+			//Дробь строится для модуля числа, а знак добавляется к готовой дроби, чтобы -x выводилось как x со знаком
+			//минус: прежде при упрощении дроби с отрицательным числителем и большим порядком переполнялся long.
 			var sign = Sign(value);
 			value *= sign;
 
 			var eps = accuracy == 0 ? 0D : Exp10(-accuracy);
 			var order = (int)Floor(GetOrder(value)); //Порядок числа
 			value *= Exp10(-order); //Мантисса
+
+			//У чисел меньше 10⁻³⁰⁸ множитель 10^(-order) не представим, и прежде из бесконечной мантиссы
+			//получалась случайная дробь, в том числе с другим знаком.
+			if (double.IsInfinity(value))
+			{
+				return Fraction.NaN;
+			}
 
 			value += value*eps/10;
 
@@ -141,7 +169,8 @@ namespace Ruzil3D.Utility
 
 				if (numerator - (int) numerator <= numerator * eps)
 				{
-					return new Fraction(sign*(int) numerator, i, order, true);
+					var fraction = new Fraction((int) numerator, i, order, true);
+					return sign > 0 ? fraction : new Fraction(-fraction.Numerator, fraction.Denominator, fraction.Order);
 				}
 			}
 
@@ -323,7 +352,9 @@ namespace Ruzil3D.Utility
 			}
 
 			long denominator;
-			var tanStr = FractionToString(fraction, 8, null, true, out denominator);
+			//Обозначение "1", как у обычных дробей: прежде передавался null, и числитель, равный единице,
+			//терялся ("arctg /2" вместо "arctg 1/2").
+			var tanStr = FractionToString(fraction, 8, "1", true, out denominator);
 
 			angle = (angle%Tau + Tau)%Tau;
 
@@ -353,8 +384,18 @@ namespace Ruzil3D.Utility
 		{
 			var number = isNumerator ? value / divider : value * divider;
 
+			//Частное субнормального числа и константы может обратиться в ноль, и без этой проверки
+			//получалось бы "0π".
+			if (number.Equals(0D) && !value.Equals(0D))
+			{
+				denominator = 0;
+				return null;
+			}
+
 			Fraction fraction;
-			if (Abs(Round(number) - number) < 1E-13 * number && Abs(number) > 1E-13)
+			//Допуск берётся от модуля числа: прежде для отрицательных чисел условие не выполнялось никогда,
+			//и они выводились иначе, чем положительные (-25000000000 вместо -2.5000·10¹⁰).
+			if (Abs(Round(number) - number) < 1E-13 * Abs(number) && Abs(number) > 1E-13)
 			{
 				var numerator = (long)Round(number);
 				var numOrder = (int)GetOrder(numerator) + 1;
@@ -501,7 +542,9 @@ namespace Ruzil3D.Utility
 			public NumberInfo(object number)
 			{
 				Value = number;
-				DoubleValue = Convert.ToDouble(number);
+				//Строки разбираются в инвариантной культуре: прежде "1.5" давало 1.5 при en-US, 15 при de-DE
+				//и FormatException при ru-RU.
+				DoubleValue = Convert.ToDouble(number, CultureInfo.InvariantCulture);
 			}
 
 			private bool _isEpsilonCalculated;
@@ -593,6 +636,14 @@ namespace Ruzil3D.Utility
 
 			private double _epsilon;
 
+			/// <summary>
+			/// Получает погрешность числа относительно его краткой десятичной записи: модуль разности между числом
+			/// и ближайшим числом с наименьшим количеством значащих цифр, от которого оно отличается меньше чем
+			/// на 10⁻⁶ единицы последнего разряда. Например, для 1.0000001 краткая запись — 1, а погрешность
+			/// примерно равна 10⁻⁷.
+			/// </summary>
+			/// <remarks>Для нуля, NaN, бесконечностей и чисел, совпадающих со своей краткой записью, равна нулю.
+			/// Если погрешность не равна нулю, <see cref="StringValue"/> выводит краткую запись с пометкой «+ ε» или «- ε».</remarks>
 			public double Epsilon
 			{
 				get
@@ -866,7 +917,11 @@ namespace Ruzil3D.Utility
 				var exp = Exp10(significant - ord);
 				var expOffset = Exp10(offset);
 
-				mantissa = (Round(num * exp / expOffset) * expOffset / Exp10(significant - 1)).ToString("0." + new string('0', significant - offset - 1));
+				//У чисел меньше примерно 10⁻³⁰⁰ множитель 10^(significant - ord) не представим в double, и прежде
+				//выводилось "Infinity·10⁻³⁰⁵", поэтому такие числа масштабируются в два шага.
+				var scaled = double.IsInfinity(exp) ? num * Exp10(300) * Exp10(significant - ord - 300) : num * exp;
+
+				mantissa = (Round(scaled / expOffset) * expOffset / Exp10(significant - 1)).ToString("0." + new string('0', significant - offset - 1));
 				character = "·10" + GetIndex(ord - 1, true);
 				return;
 			}
