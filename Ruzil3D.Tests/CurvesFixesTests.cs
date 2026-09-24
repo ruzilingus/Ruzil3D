@@ -13,6 +13,12 @@ namespace Ruzil3D.Tests
 	{
 		#region Helpers
 
+		private static BezierCurve StraightBezier(double length)
+		{
+			return new BezierCurve(Point3D.Empty, new Point3D(length/3, 0, 0), new Point3D(2*length/3, 0, 0),
+				new Point3D(length, 0, 0));
+		}
+
 		/// <summary>
 		/// Кривая с точкой возврата при t = 0.5.
 		/// </summary>
@@ -47,6 +53,14 @@ namespace Ruzil3D.Tests
 			}
 
 			return result;
+		}
+
+		/// <summary>
+		/// Приводит угол к интервалу (−π, π].
+		/// </summary>
+		private static double Wrap(double angle)
+		{
+			return angle - 2*System.Math.PI*System.Math.Round(angle/(2*System.Math.PI));
 		}
 
 		private class ValueOnlyCurve : ParametricCurve
@@ -291,6 +305,177 @@ namespace Ruzil3D.Tests
 
 			TestUtil.Near(new Point3D(4, 0, 0), curve.GetValue(1));
 			TestUtil.Near(new Point3D(1, 0, 0), curve.GetTangent(0.5));
+		}
+
+		#endregion
+
+		#region Elliptic arcs
+
+		[Fact]
+		public void EllipticArc_SweepFollowsPolarAngle()
+		{
+			// Прежде развёртка параметра поправлялась только по знаку конечного параметра: для 144 из 544 пар
+			// (начало, развёртка) дуга шла в обратную сторону или охватывала лишний оборот.
+			foreach (var axes in new[] {new[] {2D, 1D}, new[] {1D, 3D}})
+			{
+				for (var i = -8; i <= 8; i++)
+				{
+					for (var j = -16; j <= 16; j++)
+					{
+						if (j == 0)
+						{
+							continue;
+						}
+
+						var start = i*System.Math.PI/8 + 0.05;
+						var sweep = j*System.Math.PI/8 + 0.03;
+						var arc = new EllipticArcCurve(axes[0], axes[1], start, sweep);
+
+						var point = arc.GetValue(0);
+						var previous = System.Math.Atan2(point.Y, point.X);
+						Assert.Equal(0, Wrap(previous - start), 9);
+
+						// Полярный угол точки дуги меняется монотонно в сторону развёртки и в сумме на развёртку.
+						var angle = start;
+						for (var k = 1; k <= 400; k++)
+						{
+							point = arc.GetValue(k/400D);
+							var current = System.Math.Atan2(point.Y, point.X);
+							var delta = Wrap(current - previous);
+
+							Assert.True(delta*sweep >= -1e-12, "Дуга идёт против развёртки: start = " + start + ", sweep = " + sweep);
+							angle += delta;
+							previous = current;
+						}
+
+						Assert.Equal(start + sweep, angle, 9);
+					}
+				}
+			}
+		}
+
+		[Fact]
+		public void EllipticArc_Length()
+		{
+			// Для эллипса 2×1 дуга (π/2, −π/4) имела длину 10.59 вместо 0.90, а полный эллипс обходился дважды.
+			var arc = new EllipticArcCurve(2, 1, System.Math.PI/2, -System.Math.PI/4);
+			var stop = System.Math.Atan2(2*System.Math.Sin(System.Math.PI/4), System.Math.Cos(System.Math.PI/4));
+			var expected = Polyline(theta => new Point3D(2*System.Math.Cos(theta), System.Math.Sin(theta), 0), stop, System.Math.PI/2, 100000);
+
+			Assert.Equal(expected, arc.Length, 8);
+			TestUtil.Near(new Point3D(2*System.Math.Cos(stop), System.Math.Sin(stop), 0), arc.GetValue(1), 1e-12);
+
+			// Периметр эллипса с полуосями 2 и 1.
+			Assert.Equal(9.688448220547675, new EllipticArcCurve(2, 1, 0, 2*System.Math.PI).Length, 9);
+			Assert.Equal(9.688448220547675, new EllipticArcCurve(2, 1, 1, -2*System.Math.PI).Length, 9);
+		}
+
+		[Fact]
+		public void EllipticArc_ClockwiseTangentAndCurvature()
+		{
+			// Прежде касательная и кривизна не учитывали знак развёртки: у дуги, идущей по часовой стрелке, касательная
+			// была направлена против движения, а кривизна была положительной.
+			var circle = new EllipticArcCurve(1, 0, -System.Math.PI/2);
+			TestUtil.Near(new Point3D(0, -1, 0), circle.GetTangent(0), 1e-12);
+			TestUtil.Near(new Point3D(0, 0, -1), circle.GetCurvature(0.5), 1e-12);
+
+			var ellipse = new EllipticArcCurve(2, 1, 0, -System.Math.PI/2);
+			TestUtil.Near(new Point3D(0, -1, 0), ellipse.GetTangent(0), 1e-12);
+			TestUtil.Near(new Point3D(0, 0, -2), ellipse.GetCurvature(0), 1e-12);
+
+			var arcs = new[]
+			{
+				circle, ellipse, new EllipticArcCurve(1, 0.5, 2), new EllipticArcCurve(2, 1, 0.3, 2),
+				new EllipticArcCurve(1, 3, 0.5, -4), new EllipticArcCurve(3, 1.5, -1, -1)
+			};
+
+			foreach (var arc in arcs)
+			{
+				foreach (var t in new[] {0.1, 0.5, 0.9})
+				{
+					const double h = 1e-4;
+					var d1 = (arc.GetValue(t + h) - arc.GetValue(t - h))/(2*h);
+					var d2 = (arc.GetValue(t + h) - arc.GetValue(t)*2 + arc.GetValue(t - h))/(h*h);
+					var curvature = d1*d2/System.Math.Pow(d1.Length, 3);
+
+					TestUtil.Near(d1/d1.Length, arc.GetTangent(t), 1e-6);
+					TestUtil.Near(curvature, arc.GetCurvature(t), 1e-5);
+				}
+			}
+		}
+
+		[Fact]
+		public void EllipticArc_RecastToBezierCurves()
+		{
+			// Одна кубическая кривая приближает большую дугу плохо: для полной окружности её промежуточные точки уходили
+			// в бесконечность. Новый метод делит дугу на участки не больше четверти оборота.
+			var sweeps = new[] {2*System.Math.PI, -2*System.Math.PI, 1.5*System.Math.PI, 0.3};
+			var counts = new[] {4, 4, 3, 1};
+			for (var s = 0; s < sweeps.Length; s++)
+			{
+				var arc = new EllipticArcCurve(1, 0.2, sweeps[s]);
+				var curves = arc.RecastToBezierCurves();
+
+				Assert.Equal(counts[s], curves.Length);
+				TestUtil.Near(arc.GetValue(0), curves[0].P0, 1e-12);
+				TestUtil.Near(arc.GetValue(1), curves[curves.Length - 1].P3, 1e-12);
+
+				var error = 0D;
+				for (var k = 0; k < curves.Length; k++)
+				{
+					if (k > 0)
+					{
+						Assert.Equal(curves[k - 1].P3, curves[k].P0);
+					}
+
+					TestUtil.Near(arc.GetTangent((double) k/curves.Length), curves[k].GetTangent(0), 1e-9);
+
+					for (var i = 0; i <= 100; i++)
+					{
+						error = System.Math.Max(error, System.Math.Abs(curves[k].GetValue(i/100D).Length - 1));
+					}
+				}
+
+				Assert.InRange(error, 0, 3e-4);
+			}
+
+			var ellipse = new EllipticArcCurve(3, 1.5, 0.3, 5);
+			foreach (var curve in ellipse.RecastToBezierCurves())
+			{
+				for (var i = 0; i <= 100; i++)
+				{
+					var point = curve.GetValue(i/100D);
+					var radius = System.Math.Sqrt(point.X*point.X/9 + point.Y*point.Y/2.25);
+					Assert.InRange(radius, 1 - 3e-4, 1 + 3e-4);
+				}
+			}
+		}
+
+		#endregion
+
+		#region Distances
+
+		[Fact]
+		public void GetDistance_SignedForAllCurveTypes()
+		{
+			// Прежде знак GetDistance(0.75, 0.25) зависел от типа кривой: для отрезка и дуги окружности он был
+			// положительным, для кривой Безье и эллиптической дуги — отрицательным.
+			var curves = new ParametricCurve[]
+			{
+				new LineCurve(Point3D.Empty, new Point3D(4, 0, 0)), StraightBezier(4), new EllipticArcCurve(1, 0, System.Math.PI/2),
+				new EllipticArcCurve(1, 0, -System.Math.PI/2), new EllipticArcCurve(2, 1, 0, System.Math.PI/2)
+			};
+
+			foreach (var curve in curves)
+			{
+				var forward = curve.GetDistance(0.25, 0.75);
+
+				Assert.True(forward > 0);
+				Assert.Equal(-forward, curve.GetDistance(0.75, 0.25), 12);
+			}
+
+			Assert.Equal(2, curves[0].GetDistance(0.25, 0.75), 12);
+			Assert.Equal(System.Math.PI/4, curves[3].GetDistance(0.25, 0.75), 12);
 		}
 
 		#endregion
