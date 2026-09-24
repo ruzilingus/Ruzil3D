@@ -130,8 +130,15 @@ namespace Ruzil3D.Algebra
 		/// <returns>Частное от деления <paramref name="x"/> на <paramref name="y"/>.</returns>
 		public static Complex operator /(Complex x, Complex y)
 		{
-			var divider = y.Abs2;
-			return new Complex((x.R*y.R + x.I*y.I)/divider, (x.I*y.R - x.R*y.I)/divider);
+			if ((y.R.Equals(0D) && y.I.Equals(0D)) || (IsOrdinary(x.R, x.I) && IsOrdinary(y.R, y.I)))
+			{
+				var divider = y.Abs2;
+				return new Complex((x.R*y.R + x.I*y.I)/divider, (x.I*y.R - x.R*y.I)/divider);
+			}
+
+			//Для очень больших и очень малых чисел R² + I² переполняется или обращается в ноль:
+			//прежде (2e160 + 0i) / (1e160 + 0i) давало (NaN, 0).
+			return Divide(x.R, x.I, y.R, y.I);
 		}
 
 		/// <summary>
@@ -190,8 +197,14 @@ namespace Ruzil3D.Algebra
 		/// <returns>Частное от деления <paramref name="x"/> на <paramref name="y"/>.</returns>
 		public static Complex operator /(double x, Complex y)
 		{
-			x /= y.Abs2;
-			return new Complex(x * y.R, - x * y.I);
+			if ((y.R.Equals(0D) && y.I.Equals(0D)) || (IsOrdinary(x, 0D) && IsOrdinary(y.R, y.I)))
+			{
+				x /= y.Abs2;
+				return new Complex(x * y.R, - x * y.I);
+			}
+
+			//Прежде 1.0 / (1e-170 + 0i) давало (∞, NaN): квадрат модуля обращался в ноль.
+			return Divide(x, 0D, y.R, y.I);
 		}
 
 		/// <summary>
@@ -305,7 +318,9 @@ namespace Ruzil3D.Algebra
 			}
 			else
 			{
-				r = System.Math.Pow(Abs2, 0.5D / deg);
+				//Для очень больших и очень малых чисел R² + I² переполняется или обращается в ноль:
+				//прежде Complex(-1e200, 0).GetRoots(2) давало (∞, ∞) и (-∞, -∞).
+				r = IsOrdinary(R, I) ? System.Math.Pow(Abs2, 0.5D / deg) : System.Math.Pow(Abs, 1D / deg);
 			}
 			
 			var result = new Complex[deg];
@@ -328,10 +343,73 @@ namespace Ruzil3D.Algebra
 		private double Abs2 => R*R + I*I;
 
 		/// <summary>
+		/// Наибольшая по модулю часть «обычного» числа: для таких чисел R² + I² и произведения частей вычисляются
+		/// без переполнения и потери точности, и используются прежние формулы с прежними результатами.
+		/// </summary>
+		private const double OrdinaryMax = 1E+75;
+
+		/// <summary>
+		/// Наименьшая по модулю ненулевая наибольшая часть «обычного» числа.
+		/// </summary>
+		private const double OrdinaryMin = 1E-75;
+
+		private static bool IsOrdinary(double r, double i)
+		{
+			var max = System.Math.Max(System.Math.Abs(r), System.Math.Abs(i));
+			return max.Equals(0D) || (max >= OrdinaryMin && max <= OrdinaryMax);
+		}
+
+		/// <summary>
+		/// Делит (a + bi) на (c + di) по алгоритму Смита, не вычисляя c² + d².
+		/// </summary>
+		private static Complex Divide(double a, double b, double c, double d)
+		{
+			if (System.Math.Abs(c) >= System.Math.Abs(d))
+			{
+				var ratio = d/c;
+				var divider = c + d*ratio;
+				return new Complex((a + b*ratio)/divider, (b - a*ratio)/divider);
+			}
+			else
+			{
+				var ratio = c/d;
+				var divider = c*ratio + d;
+				return new Complex((a*ratio + b)/divider, (b*ratio - a)/divider);
+			}
+		}
+
+		/// <summary>
 		/// Получает абсолютное значение (или величину) комплексного числа.
 		/// </summary>
 		/// <value>Абсолютное значение (или величина) комплексного числа.</value>
-		public double Abs => System.Math.Sqrt(Abs2);
+		public double Abs
+		{
+			get
+			{
+				if (IsOrdinary(R, I))
+				{
+					return System.Math.Sqrt(Abs2);
+				}
+
+				//Модуль вычисляется с масштабированием. Прежде R² + I² переполнялось или обращалось в ноль:
+				//модуль (1e200, 1e200) был равен ∞, а (3e-200, 4e-200) — нулю.
+				var r = System.Math.Abs(R);
+				var i = System.Math.Abs(I);
+				if (double.IsNaN(r) || double.IsNaN(i))
+				{
+					return double.NaN;
+				}
+
+				if (double.IsInfinity(r) || double.IsInfinity(i))
+				{
+					return double.PositiveInfinity;
+				}
+
+				var max = r > i ? r : i;
+				var ratio = (r > i ? i : r)/max;
+				return max*System.Math.Sqrt(1D + ratio*ratio);
+			}
+		}
 
 		/// <summary>
 		/// Получает аргумент комплексного числа.
@@ -346,7 +424,9 @@ namespace Ruzil3D.Algebra
 		/// <returns>Комплексное число, возведенное в степень <paramref name="y"/>.</returns>
 		public Complex Pow(double y)
 		{
-			var r = System.Math.Pow(Abs2, y/2D);
+			//Для очень больших и очень малых чисел в степень возводится сам модуль: прежде R² + I² переполнялось,
+			//и Complex(1e200, 0).Pow(0.5) давало (∞, NaN).
+			var r = IsOrdinary(R, I) ? System.Math.Pow(Abs2, y/2D) : System.Math.Pow(Abs, y);
 			var fi = Angle * y;
 
 			//Первый корень
@@ -389,8 +469,9 @@ namespace Ruzil3D.Algebra
 		/// <code>
 		/// var num = new Complex(2, -1);
 		/// Console.Write(num); //Результат: 2 - i
-		/// Console.Write(-2*num); //Результат: -4 + 2i
+		/// Console.Write(-2*num); //Результат: -4 + 2 i
 		/// </code>
+		/// Между коэффициентом и мнимой единицей стоит узкий неразрывный пробел <see cref="CStatic.NarrowNbSp"/>.
 		/// </remarks>
 		public override string ToString()
 		{
@@ -454,14 +535,44 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Форматирует значение текущего экземпляра с использованием заданного формата.
 		/// </summary>
-		/// <param name="format">Объект <see cref="T:System.String"/>, задающий используемый формат.</param>
-		/// <param name="formatProvider">Объект <see cref="T:System.IFormatProvider"/>, используемый для форматирования значения.</param><filterpriority>2</filterpriority>
+		/// <param name="format">Объект <see cref="T:System.String"/>, задающий формат вещественной и мнимой частей. Если он пуст или равен <b>null</b>, результат совпадает с <see cref="ToString()"/>.</param>
+		/// <param name="formatProvider">Объект <see cref="T:System.IFormatProvider"/>, используемый для форматирования частей.</param><filterpriority>2</filterpriority>
 		/// <returns>
-		/// Объект <see cref="T:System.String"/> содержит значение текущего экземпляра в заданном формате.
+		/// Объект <see cref="T:System.String"/> содержит значение текущего экземпляра в заданном формате,
+		/// например "1.23 - 4.57 i" для числа (1.2345, -4.5678) и формата "F2". Нулевые части не выводятся, как и в <see cref="ToString()"/>.
 		/// </returns>
 		public string ToString(string format, IFormatProvider formatProvider)
 		{
-			return ToString();
+			//Прежде формат и провайдер игнорировались: ToString("F2") и {0:F1} выводили число без форматирования.
+			if (string.IsNullOrEmpty(format))
+			{
+				return ToString();
+			}
+
+			if (0D.Equals(R) && 0D.Equals(I))
+			{
+				return 0D.ToString(format, formatProvider);
+			}
+
+			if (double.IsNaN(R) || double.IsNaN(I))
+			{
+				return double.NaN.ToString(format, formatProvider);
+			}
+
+			var unit = CStatic.NarrowNbSp + "i";
+
+			if (0D.Equals(I))
+			{
+				return R.ToString(format, formatProvider);
+			}
+
+			if (0D.Equals(R))
+			{
+				return I.ToString(format, formatProvider) + unit;
+			}
+
+			return R.ToString(format, formatProvider) + (I < 0D ? " - " : " + ") +
+			       System.Math.Abs(I).ToString(format, formatProvider) + unit;
 		}
 	}
 }

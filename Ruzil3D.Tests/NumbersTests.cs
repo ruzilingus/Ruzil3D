@@ -385,6 +385,65 @@ namespace Ruzil3D.Tests
 
 		#endregion
 
+		#region Complex
+
+		[Fact]
+		public void Complex_Division_ExtremeMagnitudes()
+		{
+			// Прежде деление вычисляло R² + I², которое переполнялось или обращалось в ноль: (2e160) / (1e160) = (NaN, 0).
+			Assert.Equal(new Complex(2, 0), new Complex(2e160, 0)/new Complex(1e160, 0));
+			Assert.Equal(new Complex(1, 0), new Complex(1e-200, 1e-200)/new Complex(1e-200, 1e-200));
+
+			var inverse = 1.0/new Complex(1e-170, 0);
+			Assert.Equal(1e170, inverse.R);
+			Assert.Equal(0D, inverse.I);
+
+			var ratio = new Complex(3e200, 4e200)/new Complex(1e200, 2e200);
+			Assert.Equal(2.2, ratio.R, 1e-15);
+			Assert.Equal(-0.4, ratio.I, 1e-15);
+
+			// Обычные значения вычисляются по прежней формуле.
+			Assert.Equal(new Complex(1, 2), new Complex(-5, 10)/new Complex(3, 4));
+			Assert.Equal(new Complex(0.2, -0.4), 1.0/new Complex(1, 2));
+		}
+
+		[Fact]
+		public void Complex_AbsPowAndRoots_ExtremeMagnitudes()
+		{
+			// Прежде модуль (1e200, 1e200) был равен ∞, (3e-200, 4e-200) — нулю, а Complex(1e200, 0).Pow(0.5) давал (∞, NaN).
+			Assert.Equal(1.4142135623730951e200, new Complex(1e200, 1e200).Abs);
+			Assert.Equal(5e-200, new Complex(3e-200, 4e-200).Abs, 1e-214);
+			Assert.Equal(5D, new Complex(3, 4).Abs);
+
+			var root = new Complex(1e200, 0).Pow(0.5);
+			Assert.Equal(1e100, root.R);
+			Assert.Equal(0D, root.I);
+
+			foreach (var value in new Complex(-1e200, 0).GetRoots(2))
+			{
+				Assert.Equal(1e100, value.Abs, 1e86);
+			}
+		}
+
+		[Fact]
+		public void Complex_ToStringWithFormat_UsesFormatAndProvider()
+		{
+			// Прежде формат и провайдер игнорировались: ToString("F2") выводил "1.2345000 - 4.5678000 i".
+			var number = new Complex(1.2345, -4.5678);
+			var comma = new NumberFormatInfo {NumberDecimalSeparator = ","};
+
+			Assert.Equal("1.23 - 4.57 i", number.ToString("F2", CultureInfo.InvariantCulture));
+			Assert.Equal("1,23 - 4,57 i", number.ToString("F2", comma));
+			Assert.Equal("0.3 + 0.7 i", string.Format(CultureInfo.InvariantCulture, "{0:F1}", new Complex(0.26, 0.74)));
+			Assert.Equal("-2.0 i", new Complex(0, -2).ToString("F1", CultureInfo.InvariantCulture));
+
+			// Без формата вывод прежний.
+			Assert.Equal("2 - i", TestUtil.WithCulture("", () => new Complex(2, -1).ToString(null, CultureInfo.InvariantCulture)));
+			Assert.Equal("-4 + 2 i", TestUtil.WithCulture("", () => (-2*new Complex(2, -1)).ToString()));
+		}
+
+		#endregion
+
 		#region Helpers
 
 		private static void Near(double expected, Fraction actual, double tolerance)
