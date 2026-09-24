@@ -11,6 +11,24 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);Ruzil3D.Tests/**</DefaultItemExcludes>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- Метаданные пакета NuGet (dotnet pack). Версия совпадает с AssemblyVersion в Properties/AssemblyInfo.cs. -->
+    <PackageId>Ruzil3D</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Ruzil</Authors>
+    <Description>Библиотека математики для разработчиков игр: дроби, комплексные числа, многочлены, векторы, матрицы, кватернионы, геометрия на плоскости и в пространстве, кривые Безье, численное интегрирование, интерполяция и сглаживание.</Description>
+    <Copyright>Copyright © 2015</Copyright>
+    <PackageTags>math;geometry;3d;vector;matrix;quaternion;polynomial;fraction;bezier;numerical;unity</PackageTags>
+    <PackageProjectUrl>https://github.com/ruzilingus/Ruzil3D</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ruzilingus/Ruzil3D</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(TargetFramework)' == 'net35'">
     <Reference Include="System.Drawing" />
   </ItemGroup>

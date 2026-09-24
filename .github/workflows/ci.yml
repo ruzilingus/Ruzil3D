@@ -21,3 +21,6 @@ jobs:
 
       - name: Тесты
         run: dotnet test Ruzil3D.sln --configuration Release --no-build --verbosity normal
+
+      - name: Пакет NuGet
+        run: dotnet pack Ruzil3D.csproj --configuration Release --no-build --output artifacts
