@@ -523,6 +523,8 @@ namespace Ruzil3D
 		/// </summary>
 		/// <param name="numerator">Первое число.</param>
 		/// <param name="divider">Второе число.</param>
+		/// <exception cref="ArgumentException">Оба числа равны нулю.</exception>
+		/// <exception cref="OverflowException">Числа равны <see cref="int.MinValue"/> и 0 или <see cref="int.MinValue"/>.</exception>
 		public static void Simplify(ref int numerator, ref int divider)
 		{
 			var div = GreatestDivisor(numerator, divider);
@@ -535,6 +537,8 @@ namespace Ruzil3D
 		/// </summary>
 		/// <param name="numerator">Первое число.</param>
 		/// <param name="divider">Второе число.</param>
+		/// <exception cref="ArgumentException">Оба числа равны нулю.</exception>
+		/// <exception cref="OverflowException">Числа равны <see cref="long.MinValue"/> и 0 или <see cref="long.MinValue"/>.</exception>
 		public static void Simplify(ref long numerator, ref long divider)
 		{
 			var div = GreatestDivisor(numerator, divider);
@@ -560,33 +564,26 @@ namespace Ruzil3D
 		/// <param name="num1">Первое число.</param>
 		/// <param name="num2">Второе число.</param>
 		/// <returns>Наибольший общий делитель.</returns>
+		/// <exception cref="ArgumentException">Оба числа равны нулю.</exception>
+		/// <exception cref="OverflowException">Наибольший общий делитель равен 2³¹ (числа <see cref="int.MinValue"/> и 0 или <see cref="int.MinValue"/>).</exception>
 		public static int GreatestDivisor(int num1, int num2)
 		{
-			num1 = Abs(num1);
-			num2 = Abs(num2);
+			//Модули берутся в беззнаковых числах: прежде Abs(int.MinValue) выбрасывал OverflowException,
+			//хотя, например, НОД(int.MinValue, 6) = 2 представим.
+			var n1 = num1 < 0 ? (uint)(-(num1 + 1)) + 1 : (uint)num1;
+			var n2 = num2 < 0 ? (uint)(-(num2 + 1)) + 1 : (uint)num2;
 
-			if (num1.Equals(0))
-			{
-				if (num2.Equals(0)) throw new ArgumentException();
-				return num2;
-			}
+			if (n1 == 0 && n2 == 0) throw new ArgumentException("Наибольший общий делитель двух нулей не определён.");
 
-			if (num2.Equals(0))
-			{
-				return num1;
-			}
-
-			var n1 = num1 > num2 ? num1 : num2;
-			var n2 = num1 < num2 ? num1 : num2;
-
-			do
+			while (n2 != 0)
 			{
 				var rem = n1%n2;
 				n1 = n2;
 				n2 = rem;
-			} while (n2 != 0);
+			}
 
-			return n1;
+			if (n1 > int.MaxValue) throw new OverflowException("Наибольший общий делитель равен 2³¹ и не представим числом int.");
+			return (int)n1;
 		}
 
 		/// <summary>
@@ -595,33 +592,26 @@ namespace Ruzil3D
 		/// <param name="num1">Первое число.</param>
 		/// <param name="num2">Второе число.</param>
 		/// <returns>Наибольший общий делитель.</returns>
+		/// <exception cref="ArgumentException">Оба числа равны нулю.</exception>
+		/// <exception cref="OverflowException">Наибольший общий делитель равен 2⁶³ (числа <see cref="long.MinValue"/> и 0 или <see cref="long.MinValue"/>).</exception>
 		public static long GreatestDivisor(long num1, long num2)
 		{
-			num1 = Abs(num1);
-			num2 = Abs(num2);
+			//Модули берутся в беззнаковых числах: прежде Abs(long.MinValue) выбрасывал OverflowException,
+			//хотя, например, НОД(long.MinValue, 6) = 2 представим.
+			var n1 = num1 < 0 ? (ulong)(-(num1 + 1)) + 1 : (ulong)num1;
+			var n2 = num2 < 0 ? (ulong)(-(num2 + 1)) + 1 : (ulong)num2;
 
-			if (num1.Equals(0L))
-			{
-				if (num2.Equals(0L)) throw new ArgumentException();
-				return num2;
-			}
+			if (n1 == 0 && n2 == 0) throw new ArgumentException("Наибольший общий делитель двух нулей не определён.");
 
-			if (num2.Equals(0L))
-			{
-				return num1;
-			}
-
-			var n1 = num1 > num2 ? num1 : num2;
-			var n2 = num1 < num2 ? num1 : num2;
-
-			do
+			while (n2 != 0)
 			{
 				var rem = n1%n2;
 				n1 = n2;
 				n2 = rem;
-			} while (n2 != 0);
+			}
 
-			return n1;
+			if (n1 > long.MaxValue) throw new OverflowException("Наибольший общий делитель равен 2⁶³ и не представим числом long.");
+			return (long)n1;
 		}
 
 		/// <summary>
