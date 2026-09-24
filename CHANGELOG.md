@@ -1,0 +1,135 @@
+# История изменений
+
+Изменения перечислены относительно состояния репозитория до перевода проекта на SDK-формат (коммит `6b5091f`).
+Подробности и примеры с числами есть в сообщениях коммитов. На каждое исправление есть регрессионный тест в проекте `Ruzil3D.Tests`.
+
+## [Не выпущено] — версия пакета 1.0.0
+
+Открытые члены библиотеки не удалялись, не переименовывались, и их сигнатуры не менялись. Это проверено сравнением открытого API сборок до и после изменений.
+Но некоторые методы теперь возвращают другие результаты или выбрасывают исключения там, где раньше молча возвращали неверное значение. Такие изменения собраны в разделе «Изменено».
+
+### Добавлено
+
+- Проект `Ruzil3D.Tests` (xUnit, net8.0) с регрессионными тестами и сборка GitHub Actions: сборка, тесты и проверка пакета NuGet при изменении `master` и в пулл-реквестах.
+- Метаданные пакета NuGet: `dotnet pack` собирает пакет с обеими сборками (net35, netstandard2.0), XML-документацией и README.
+- `EllipticArcCurve.RecastToBezierCurves()` делит дугу на участки не больше четверти оборота и приводит каждый к кубической кривой Безье (отклонение не больше 2.8·10⁻⁴ радиуса).
+- `Affinity.GetInvertCore()` — защищённый виртуальный метод, через который `GetInvert` возвращает `Isometry` для изометрий и при вызове через ссылку на `Affinity`.
+- `BernsteinCurve.RecastToBezierCurve()` реализован для кривых до третьей степени.
+- XML-документация открытых членов `Ruzil3D.Filters`, `Calculus.FindRoot` и `Calculus.Differentiate`.
+
+### Изменено
+
+Новые исключения вместо неверного результата, зависания или исключения другого типа:
+
+- `Calculus.Integrate`: бесконечный предел или NaN — `ArgumentOutOfRangeException`, `null` — `ArgumentNullException`.
+- `Calculus.Differentiate`: недопустимые `eps`, порядок и сторона — `ArgumentOutOfRangeException`.
+- `Matrix.GetInverse`: численно вырожденная матрица — `DivideByZeroException`, как и точно вырожденная (раньше возвращались числа порядка 1e16).
+- `LinearSystem.Resolve`: вырожденная система — `ArithmeticException` вместо `Exception`, несогласованные размерности — `ArgumentException`.
+- Сетка из одного узла в `CGridApproximation`, `LinearInterpolation`, `CubicInterpolation` и пустой вход или одна точка в `InterpolationCompiler` — `ArgumentException` в конструкторе (раньше `GetValue` не завершался).
+- `ParametricCurves.GetValue` и `GetDetails` для пустой последовательности — `InvalidOperationException` (раньше бесконечный поиск).
+- `ParametricCurveDistanceCompiler`: точность вне 1…30 — `ArgumentOutOfRangeException` и в конструкторе; `GetParameter` и `GetValue` для расстояния вне [0, `Length`] — `ArgumentOutOfRangeException` с именем `distance`.
+- `BernsteinCurve.GetValue` вне отрезка [0, 1] — `ArgumentOutOfRangeException` (наследник прежнего `ArgumentException`) с именем параметра. `GetTangent` и `GetCurvature`, как и раньше, вычисляются для продолжения кривой.
+- `Polynomial.GetPolynomial(params PointD[])`: точки с одинаковой координатой X — `ArgumentException`; для одной точки возвращается постоянный многочлен вместо `null`.
+- `Line3D`: бесконечные координаты — `ArgumentException`.
+- `Math.GreatestDivisor(Fraction)`: переполнение дробей — `OverflowException` (раньше бесконечный цикл).
+- `CurveInterpolationCompiler`: пустая кривая и кривая из совпадающих точек — `ArgumentException`.
+- Фильтры:
+  - `BlurCompiler`: недопустимый `accuracy` — `ArgumentOutOfRangeException`; ядро с нулевой суммой весов, со значениями NaN или неубывающее — `ArgumentException`; `null` — `ArgumentNullException`.
+  - `SurfaceBlurFilter`: нулевое ядро — `ArgumentException`; `GetValue(x, y)` без функции — `InvalidOperationException`.
+  - Недопустимый режим экстраполяции — `ArgumentOutOfRangeException` в конструкторах.
+  - `InterpolationCompiler`: неупорядоченные, бесконечные и NaN аргументы — `ArgumentException`.
+
+Другие результаты:
+
+- `Polynomial.Resolve` и `ResolveCubicReal` — новый алгоритм для любой степени. Корни возвращаются по возрастанию, кратность учитывается, близкие кратные корни объединяются. Для коэффициентов NaN или бесконечных возвращается пустой массив. `ResolveCubicReal` при `a = 0` решает уравнение меньшей степени.
+- `LegendrePolynomial(2)` исправлен, веса Гаусса точнее. Поэтому немного меняются результаты правил Гаусса в `Calculus.Integrate`, а у двухточечного правила — существенно, так как раньше оно было неверным.
+- `Line`, `Plane`: оператор `==` сравнивает прямые и плоскости, а не коэффициенты: уравнения сравниваются с обоими знаками и допуском 1e-10. `Equals`, как и `double.Equals`, рефлексивен для NaN. `IsNormalized` вычисляется по коэффициентам.
+- `Plane * Plane` возвращает прямую, точка `M` которой — ближайшая к началу координат, а направляющая — n₁ × n₂. Параллельность плоскостей и прямой с плоскостью проверяется с допуском 1e-10.
+- `Matrix3D * Line3D` и `Affinity * Line3D` нормируют направляющую. `Matrix3D * Plane` и `Affinity * Plane` преобразуют нормаль обратной транспонированной матрицей (раньше результат был неверным).
+- `Line3D.ToString` печатает направляющую с положительной первой ненулевой координатой.
+- `Affinity.Equals` согласован с оператором `==` и не сравнивает типы.
+- `Polynomial.Equals(object)` и `GetHashCode` у `Polynomial`, `Vector`, `Matrix`, `Linear` сравнивают значения (раньше хэш-код всегда был 0). `Polynomial.Pow(0)` всегда возвращает `Identity`. `Polynomial.ToType(typeof(string))` возвращает `ToString()`.
+- Деление `Vector`, `Matrix`, `Linear` на число делит каждый элемент (разница в последнем знаке). `Matrix.Clone` копирует строки. `default(Vector)`, `default(Matrix)`, `default(Linear)` ведут себя как пустые значения.
+- `CubicInterpolation`, `LinearInterpolation` и интерполяция в `ParametricCurveDistanceCompiler` вычисляются в локальной координате клетки (разница в последних знаках; вдали от нуля точность выше).
+- `ParametricCurveDistanceCompiler` использует монотонную интерполяцию. Для обычных кривых при точности по умолчанию результаты отличаются меньше чем на 1e-10 длины кривой.
+- `EllipticArcCurve`: исправлена развёртка параметра у эллипсов (у окружностей ничего не изменилось), касательная и кривизна учитывают направление обхода.
+- `LineCurve.GetDistance` и `GetDistance` дуги окружности возвращают длину со знаком, как и остальные кривые.
+- `BezierCurve.FromPoints` строит более точные узловые точки. `BernsteinCurve` из пяти и более точек правильно вычисляет длину и расстояния.
+- `CurveBlurFilter.Resolve` строит трёхмерную кривую Безье (раньше координата Z терялась).
+- `CurveBlurFilter.FilterPoints` возвращает от 10 до 1 000 000 точек.
+- `CurveBlurFilter2`: результаты сдвинулись примерно на 1e-9 относительно, так как углы вычисляются точнее.
+- `BlurCompiler` обрезает ядра с тяжёлыми хвостами (ядро Коши: 89 секторов до радиуса 5.8e5 вместо 763 до 1.6e49). Для ядра по умолчанию и других ядер, которые и раньше обрабатывались верно, узлы и веса не изменились.
+- `InterpolationCompiler` правильно продолжает функцию, если аргументы начинаются не с нуля.
+- `Point3D.ToString` и `Quaternion.ToString` выводят векторы длиной не больше 0.001 без округления.
+- Кэш `ToString` учитывает текущую культуру.
+- `TickCounter` использует `Stopwatch` (в Windows это тот же `QueryPerformanceCounter`) и работает вне Windows.
+
+### Исправлено
+
+Зависания:
+
+- `Calculus.Integrate` на коротком отрезке вдали от нуля, а через него — `ParametricCurve.GetDistance`.
+- `GetValue` и `GetIndex` у сетки из одного узла, поиск в пустой `ParametricCurves`.
+- Вложенный `foreach` по `ParametricCurves`: `GetEnumerator` возвращает новый перечислитель при каждом вызове.
+- `Polynomial.Resolve`: время росло экспоненциально со степенью, а метод Ньютона не останавливался на NaN.
+- `Math.GreatestDivisor(Fraction)` при переполнении.
+
+Падения:
+
+- Переполнение стека в `CurveInterpolationCompiler` и `InterpolationCompiler` для бесконечных и далёких аргументов, в том числе в `CurveBlurFilter` для очень коротких кривых.
+- `Point3D.ToString` и `Quaternion.ToString` для коротких векторов (в том числе в отладчике).
+- `TickCounter` вне Windows (`kernel32.dll`).
+- `Matrix`: произведение на вектор, сумма и разность матриц с разным числом строк, `GetIdentity`.
+- `Polynomial`: деление при нулевых старших коэффициентах, производная порядка выше степени.
+- `CStatic.DoubleToStringSimple` для NaN, бесконечностей и малого числа значащих цифр.
+- `Line`, `Plane`: `Theta`, `P` и `ToString` для коэффициентов NaN.
+
+Потокобезопасность:
+
+- Общий кэш `ToString` в `CStatic`: одновременные вызовы необратимо портили словарь. Ключи кэша строятся по значениям (раньше `Linear` и `Polynomial` могли получить чужую строку).
+- Кэши `LegendrePolynomial` и `Polynomial.GetBernstein`: одновременное первое использование портило правила Гаусса до конца работы процесса.
+- `CurveBlurFilter.SearchCorners` и `GetCorrection` можно вызывать из нескольких потоков.
+- `Isometry.Quaternion`: удалён кэш в поле-структуре, который могли прочитать частично записанным.
+
+Алгебра и многочлены:
+
+- `Point3D.IsNaN` проверяет координату Z (раньше дважды проверялась Y).
+- `Point3D.Cos` не выходит за пределы [−1, 1], поэтому `Angle` больше не возвращает NaN для параллельных векторов.
+- `Point3D.Length`, `Distance`, `PointD.Length`, `Distance`, `Quaternion.Abs` не переполняются для координат больше ~1e154 и не обращаются в ноль для меньших ~1e-154.
+- `Polynomial.GetBernstein` и `GetDerivative`: переполнение `int` в биномиальных коэффициентах и факториалах.
+- `Matrix.GetInverse`, `LinearSystem.Resolve`: выбор главного элемента по столбцу. Обращение матрицы 200×200 выделяет 1 МБ вместо 155 МБ. `LinearSystem.Resolve` не изменяет массив вызывающего кода.
+
+Геометрия:
+
+- `Line3D.ToString` больше не меняет свойство `S`.
+- `Line.IntersectsWith` для малых значений.
+- `Triangle.GetCircumscribed` вдали от начала координат.
+- `Isometry.Quaternion` вычисляется методом Шеппарда: раньше для поворотов на π получались нулевой кватернион или NaN, а малые углы терялись.
+
+Численные методы:
+
+- `Calculus.FindRoot`: ложные корни у функций с малыми значениями и у полюсов, NaN, переполнение середины отрезка, бесконечные границы.
+- `Calculus.Differentiate`: разности делятся на фактический шаг (производная x в точке 1e8 была равна 1.49).
+- `CGridApproximation` копирует массив узлов.
+
+Кривые:
+
+- `BernsteinCurve`: функция выпрямления учитывает всю производную; касательная и кривизна в концах кривой с совпадающими узлами; `SplitPoints` и `GetPartPoints` (NaN при t₀ = 1).
+- `ParametricCurveDistanceCompiler`: расстояния до узлов не убывают, параметр больше не оказывается на другом конце кривой; кривая нулевой длины не даёт NaN.
+- `ParametricCurves` учитывает замену кривой в компиляторе (раньше длины сохранялись навсегда).
+- `ParametricCurve.ToString` для кривых, в которых реализован только `GetValue`.
+
+Фильтры:
+
+- `BlurCompiler` вызывал ядро с отрицательным радиусом и обрезал ядра с нулём в центре, отрицательными лепестками или нулевым промежутком.
+- `SurfaceBlurFilter` определяет протяжённость ядра по нему самому, а не по зашитому радиусу 3.
+- `CurveBlurFilter` и `CurveBlurFilter2` находят изломы вдали от начала координат (например, в координатах UTM). `CurveBlurFilter2` больше не даёт NaN на прямых участках.
+- `CurveBlurFilter.GetCorrection` для прямых участков и острия.
+- `LoadFrom`: `CurveBlurFilter` сохраняет заданное ядро, `CurveBlurFilter2` реализует метод.
+- `CurveInterpolationCompiler` и `InterpolationCompiler` копируют массивы, кэш `GetMean` работает.
+
+### Удалено
+
+- Ссылки на неиспользуемые пакеты Castle.Core и Newtonsoft.Json с несуществующими путями.
+- `Ruzil3D.chw` — служебный индекс, который программа просмотра справки создаёт сама.
+- Закрытый неиспользуемый код `Polynomial`: прежние формулы для уравнений третьей и четвёртой степени, `FindRoot`, `GetValue_OBSOLETE`, `DivRem_OBSOLETE`, `Multiply`, незавершённый `GetLimitValue`.
