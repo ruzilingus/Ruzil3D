@@ -338,6 +338,42 @@ namespace Ruzil3D.Tests
 		}
 
 		[Fact]
+		public void Math_PowLong_ThrowsOnOverflow()
+		{
+			// Прежде Pow(long, int) молча переполнялся: Pow(10, 19) = -8446744073709551616, Pow(2, 63) = long.MinValue.
+			Assert.Throws<OverflowException>(() => Math.Pow(10L, 19));
+			Assert.Throws<OverflowException>(() => Math.Pow(10L, 20));
+			Assert.Throws<OverflowException>(() => Math.Pow(2L, 63));
+			Assert.Throws<OverflowException>(() => Math.Pow(3L, 40));
+			Assert.Throws<OverflowException>(() => Math.Pow(2L, 1000));
+
+			Assert.Equal(1000000000000000000L, Math.Pow(10L, 18));
+			Assert.Equal(long.MinValue, Math.Pow(-2L, 63));
+			Assert.Equal(4052555153018976267L, Math.Pow(3L, 39));
+
+			// Особые случаи не изменились.
+			Assert.Equal(-1L, Math.Pow(-1L, int.MaxValue));
+			Assert.Equal(1L, Math.Pow(1L, -5));
+			Assert.Equal(0L, Math.Pow(0L, 5));
+			Assert.Throws<ArithmeticException>(() => Math.Pow(0L, 0));
+			Assert.Throws<ArithmeticException>(() => Math.Pow(2L, -1));
+		}
+
+		[Fact]
+		public void Math_Round_RoundsHalvesUpExactly()
+		{
+			// Прежде Floor(0.5 + x) округлял сумму: Round(0.49999999999999994) было 1, нечётные числа около 2^52 увеличивались.
+			Assert.Equal(0D, Math.Round(0.49999999999999994));
+			Assert.Equal(4503599627370497D, Math.Round(4503599627370497D));
+			Assert.Equal(-4503599627370497D, Math.Round(-4503599627370497D));
+
+			Assert.Equal(3D, Math.Round(2.5));
+			Assert.Equal(-2D, Math.Round(-2.5));
+			Assert.Equal(0D, Math.Round(-0.5));
+			Assert.Equal(1235D, Math.Round(1234.5));
+		}
+
+		[Fact]
 		public void Math_GreatestDivisorFraction_IsExact()
 		{
 			// Прежде остатки вычислялись через double, и алгоритм Евклида выходил за пределы точности дробей.

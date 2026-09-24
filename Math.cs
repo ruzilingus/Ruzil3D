@@ -114,6 +114,8 @@ namespace Ruzil3D
 		/// <param name="x">64-битовое целове число со знаком, возводимое в степень.</param>
 		/// <param name="y">32-битовое целове число со знаком, задающее степень.</param>
 		/// <returns>Число <paramref name="x"/>, возведенное в степень <paramref name="y"/>.</returns>
+		/// <exception cref="ArithmeticException">Оба параметра равны нулю, или степень <paramref name="y"/> отрицательна, а <paramref name="x"/> не равно 1 или -1.</exception>
+		/// <exception cref="OverflowException">Результат не помещается в 64-битовое целое число со знаком.</exception>
 		public static long Pow(long x, int y)
 		{
 			if (y < 0)
@@ -153,17 +155,40 @@ namespace Ruzil3D
 					return 1;
 
 				default:
-					if (y > 63)
+					//Возведение в квадрат с проверкой переполнения. Прежде цикл за O(y) молча переполнялся:
+					//Pow(10, 19) = -8446744073709551616, Pow(2, 63) = long.MinValue.
+					var negative = x < 0L && y%2 != 0;
+					var limit = negative ? 9223372036854775808UL : long.MaxValue;
+					var factor = x < 0L ? (ulong) (-(x + 1L)) + 1UL : (ulong) x;
+					var result = 1UL;
+
+					for (var power = y; ; power >>= 1)
 					{
-						throw new ArithmeticException();
+						if ((power & 1) != 0)
+						{
+							if (result > limit/factor)
+							{
+								throw new OverflowException("Результат возведения в степень не помещается в 64-битовое целое число.");
+							}
+
+							result *= factor;
+						}
+
+						if (power <= 1)
+						{
+							break;
+						}
+
+						//Остались ещё разряды степени, значит результат умножится по крайней мере на factor².
+						if (factor > limit/factor)
+						{
+							throw new OverflowException("Результат возведения в степень не помещается в 64-битовое целое число.");
+						}
+
+						factor *= factor;
 					}
 
-					var result = x;
-					for (var i = 1; i < y; i++)
-					{
-						result *= x;
-					}
-					return result;
+					return negative ? unchecked((long) (0UL - result)) : (long) result;
 			}
 		}
 
@@ -178,7 +203,7 @@ namespace Ruzil3D
 		/// Возвращает квадратный корень из указанного числа.
 		/// </summary>
 		/// <param name="x">Число.</param>
-		/// <returns>Rвадратный корень из числа <paramref name="x"/>.</returns>
+		/// <returns>Квадратный корень из числа <paramref name="x"/>.</returns>
 		public static double Sqrt(double x) => System.Math.Sqrt(x);
 
 		/// <summary>
@@ -218,10 +243,10 @@ namespace Ruzil3D
 		public static double Floor(double x) => System.Math.Floor(x);
 		
 		/// <summary>
-		/// Возвращает наименьшее целое число, которое меньше или равно заданному числу двойной точности с плавающей запятой.
+		/// Возвращает наименьшее целое число, которое больше или равно заданному числу двойной точности с плавающей запятой.
 		/// </summary>
 		/// <param name="x">Число двойной точности с плавающей запятой.</param>
-		/// <returns>Наименьшее целое число, которое меньше или равно <paramref name="x"/>.</returns>
+		/// <returns>Наименьшее целое число, которое больше или равно <paramref name="x"/>.</returns>
 		public static double Ceiling(double x) => System.Math.Ceiling(x);
 
 		/// <summary>
@@ -719,7 +744,14 @@ namespace Ruzil3D
 		/// <param name="value"> Округляемое число двойной точности с плавающей запятой.</param>
 		/// <returns>Целое число, ближайшее к значению параметра <paramref name="value"/>. Если дробная часть a находится на равном расстоянии от двух целых чисел, возвращается больший.</returns>
 		/// <remarks>Обратите внимание, на отличие от функции <see cref="System.Math.Round(double)"/>, которая если дробная часть a находится на равном расстоянии от двух целых чисел, возвращает чётный.</remarks>
-		public static double Round(double value) => System.Math.Floor(0.5 + value);
+		public static double Round(double value)
+		{
+			//Дробная часть value - Floor(value) вычисляется точно. Прежде Floor(0.5 + value) округлял сумму:
+			//Round(0.49999999999999994) было 1, а нечётные числа около 2^52 увеличивались на единицу.
+			//Прибавление нуля превращает -0 в +0, как и прежде.
+			var floor = System.Math.Floor(value);
+			return value - floor >= 0.5 ? floor + 1D : floor + 0D;
+		}
 
 		/// <summary>
 		/// Округляет число до значимых десятичных символов указанных параметром <paramref name="digits"/>.
