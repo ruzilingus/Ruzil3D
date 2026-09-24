@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ruzil3D", "Ruzil3D.csproj", "{C3F80F10-9937-4A34-8F01-E12327F7F1B5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ruzil3D.Tests", "Ruzil3D.Tests\Ruzil3D.Tests.csproj", "{4C02BAAB-F1F6-42B2-8933-339231257A9F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C3F80F10-9937-4A34-8F01-E12327F7F1B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C3F80F10-9937-4A34-8F01-E12327F7F1B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C3F80F10-9937-4A34-8F01-E12327F7F1B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C3F80F10-9937-4A34-8F01-E12327F7F1B5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C02BAAB-F1F6-42B2-8933-339231257A9F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C02BAAB-F1F6-42B2-8933-339231257A9F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C02BAAB-F1F6-42B2-8933-339231257A9F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C02BAAB-F1F6-42B2-8933-339231257A9F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
