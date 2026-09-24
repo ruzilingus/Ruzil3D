@@ -9,7 +9,7 @@ namespace Ruzil3D.Curves
 	/// <summary>
 	/// Универсальный класс из последовательности кривых <see cref="ParametricCurve"/>.
 	/// </summary>
-	/// <typeparam name="T"></typeparam>
+	/// <typeparam name="T">Тип кривых последовательности.</typeparam>
 	public class ParametricCurves<T> : IEnumerable<T> where T : ParametricCurve
 	{
 		#region Inner Items
@@ -19,26 +19,98 @@ namespace Ruzil3D.Curves
 		/// </summary>
 		protected ParametricCurveDistanceCompiler<T>[] Compilers;
 
-		private double[] _lengths;
+		/// <summary>
+		/// Сохранённые длины кривых вместе с данными, по которым проверяется их актуальность.
+		/// </summary>
+		private sealed class LengthsCache
+		{
+			public readonly ParametricCurveDistanceCompiler<T>[] Compilers;
+			public readonly T[] Curves;
+			public readonly double[] Lengths;
+			public readonly int Replacements;
+
+			public LengthsCache(ParametricCurveDistanceCompiler<T>[] compilers, T[] curves, double[] lengths, int replacements)
+			{
+				Compilers = compilers;
+				Curves = curves;
+				Lengths = lengths;
+				Replacements = replacements;
+			}
+		}
+
+		private LengthsCache _lengthsCache;
 
 		/// <summary>
 		/// Возвращает массив длин кривых.
 		/// </summary>
-		protected double[] Lengths => _lengths ?? (_lengths = Compile());
+		/// <value>Массив нарастающих сумм длин кривых: элемент с индексом i равен суммарной длине первых i кривых.</value>
+		protected double[] Lengths
+		{
+			get
+			{
+				//Кривую компилятора можно заменить через его свойство Curve, поэтому сохранённые длины проверяются.
+				//Прежде они сохранялись навсегда: после замены кривой длина последовательности и расстояния оставались прежними.
+				//Счётчик замен читается до кривых, поэтому замена во время вычисления приведёт к повторной проверке.
+				var replacements = ParametricCurveDistanceCompiler<T>.CurveReplacements;
+				var compilers = Compilers;
+				var cache = _lengthsCache;
+
+				if (cache != null && ReferenceEquals(cache.Compilers, compilers))
+				{
+					if (cache.Replacements == replacements)
+					{
+						return cache.Lengths;
+					}
+
+					if (IsActual(cache, compilers))
+					{
+						_lengthsCache = new LengthsCache(compilers, cache.Curves, cache.Lengths, replacements);
+						return cache.Lengths;
+					}
+				}
+
+				var curves = new T[compilers.Length];
+				for (var i = 0; i < curves.Length; i++)
+				{
+					curves[i] = compilers[i].Curve;
+				}
+
+				var lengths = Compile(curves);
+				_lengthsCache = new LengthsCache(compilers, curves, lengths, replacements);
+
+				return lengths;
+			}
+		}
+
+		/// <summary>
+		/// Проверяет, что компиляторы содержат те же кривые, для которых вычислены сохранённые длины.
+		/// </summary>
+		private static bool IsActual(LengthsCache cache, ParametricCurveDistanceCompiler<T>[] compilers)
+		{
+			for (var i = 0; i < compilers.Length; i++)
+			{
+				if (!ReferenceEquals(cache.Curves[i], compilers[i].Curve))
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
 
 		/// <summary>
 		/// Вычисляет массив длин кривых.
 		/// </summary>
+		/// <param name="curves">Кривые последовательности.</param>
 		/// <returns>Массив структур <see cref="double"/> представляющий длин кривых.</returns>
-		private double[] Compile()
+		private static double[] Compile(T[] curves)
 		{
-			var result = new double[Compilers.Length + 1];
+			var result = new double[curves.Length + 1];
 
 			double sum = 0;
-			for (var i = 1; i <= Compilers.Length; i++)
+			for (var i = 1; i <= curves.Length; i++)
 			{
-				var compiler = Compilers[i - 1];
-				sum += compiler.Curve.Length;
+				sum += curves[i - 1].Length;
 				result[i] = sum;
 			}
 
@@ -48,11 +120,12 @@ namespace Ruzil3D.Curves
 		/// <summary>
 		/// Возращает индекс кривой соответствующей параметру.
 		/// </summary>
+		/// <param name="lengths">Массив нарастающих сумм длин кривых.</param>
 		/// <param name="distance">Параметр кривой.</param>
 		/// <returns>Индекс кривой.</returns>
 		/// <exception cref="InvalidOperationException">Последовательность не содержит кривых.</exception>
 		/// <exception cref="ArgumentOutOfRangeException">Аргумент находится вне области определения функции.</exception>
-		private int GetIndex(double distance)
+		private int GetIndex(double[] lengths, double distance)
 		{
 			if (Compilers.Length == 0)
 			{
@@ -60,20 +133,20 @@ namespace Ruzil3D.Curves
 				throw new InvalidOperationException("Последовательность не содержит кривых.");
 			}
 
-			if (distance < 0 || distance > Length)
+			if (distance < 0 || distance > lengths[lengths.Length - 1])
 			{
 				throw new ArgumentOutOfRangeException(nameof(distance),
 					"Недопустимый аргумент. Аргумент \"" + nameof(distance) + "\" находится вне области определения функции.");
 			}
 
 			var min = 1;
-			var max = Lengths.Length - 1;
+			var max = lengths.Length - 1;
 
 			while (min < max)
 			{
 				var mid = (min + max)/2;
 
-				if (distance < Lengths[mid])
+				if (distance < lengths[mid])
 				{
 					max = mid;
 				}
@@ -134,7 +207,15 @@ namespace Ruzil3D.Curves
 		/// <summary>
 		/// Возвращает длину всей последовательности.
 		/// </summary>
-		public double Length => Lengths[Lengths.Length - 1];
+		/// <remarks>Длина учитывает замену кривых в компиляторах последовательности (свойство <see cref="ParametricCurveDistanceCompiler{T}.Curve"/>).</remarks>
+		public double Length
+		{
+			get
+			{
+				var lengths = Lengths;
+				return lengths[lengths.Length - 1];
+			}
+		}
 
 		/// <summary>
 		/// Возвращает координату точки на кривой соответствующую дистанции.
@@ -145,10 +226,11 @@ namespace Ruzil3D.Curves
 		/// <exception cref="ArgumentOutOfRangeException">Расстояние находится вне отрезка [0, <see cref="Length"/>].</exception>
 		public Point3D GetValue(double distance)
 		{
-			var idx = GetIndex(distance);
+			var lengths = Lengths;
+			var idx = GetIndex(lengths, distance);
 
 			var curve = Compilers[idx];
-			distance -= Lengths[idx];
+			distance -= lengths[idx];
 
 			return curve.GetValue(Math.Min(distance, curve.Curve.Length));
 		}
@@ -157,15 +239,16 @@ namespace Ruzil3D.Curves
 		/// Возвращает детальную характеристику кривой в произвольной точке соответствующую дистанции.
 		/// </summary>
 		/// <param name="distance">Расстояние от начальной точки кривой.</param>
-		/// <returns>Детальная характеристика кривой в точке.</returns>
+		/// <returns>Детальная характеристика кривой в точке. Её расстояние <see cref="CurveDetails{T}.Distance"/> отсчитывается от начала кривой с индексом <see cref="CurveDetails{T}.Index"/>, а не от начала последовательности.</returns>
 		/// <exception cref="InvalidOperationException">Последовательность не содержит кривых.</exception>
 		/// <exception cref="ArgumentOutOfRangeException">Расстояние находится вне отрезка [0, <see cref="Length"/>].</exception>
 		public CurveDetails<T> GetDetails(double distance)
 		{
-			var idx = GetIndex(distance);
+			var lengths = Lengths;
+			var idx = GetIndex(lengths, distance);
 			var compiler = Compilers[idx];
 			var curve = compiler.Curve;
-			distance -= Lengths[idx];
+			distance -= lengths[idx];
 			distance = Math.Min(distance, curve.Length);
 			
 			return new CurveDetails<T>(distance, idx, curve, compiler.GetParameter(distance));

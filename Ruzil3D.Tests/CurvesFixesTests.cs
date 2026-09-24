@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Linq;
+using System.Reflection;
 using Ruzil3D.Algebra;
+using Ruzil3D.Approximation;
 using Ruzil3D.Curves;
 using Xunit;
 
@@ -25,6 +27,14 @@ namespace Ruzil3D.Tests
 		private static BezierCurve Cusp()
 		{
 			return new BezierCurve(new Point3D(0, 0, 0), new Point3D(1, 1, 0), new Point3D(0, 1, 0), new Point3D(1, 0, 0));
+		}
+
+		/// <summary>
+		/// Кривая с резким поворотом («шпилька») при t = 0.5.
+		/// </summary>
+		private static BezierCurve Hairpin()
+		{
+			return new BezierCurve(new Point3D(0, 0, 0), new Point3D(10, 0, 0), new Point3D(10, 0.01, 0), new Point3D(0, 0.01, 0));
 		}
 
 		private static Point3D DeCasteljau(Point3D[] points, double t)
@@ -61,6 +71,33 @@ namespace Ruzil3D.Tests
 		private static double Wrap(double angle)
 		{
 			return angle - 2*System.Math.PI*System.Math.Round(angle/(2*System.Math.PI));
+		}
+
+		/// <summary>
+		/// Точная функция выпрямления: сумма длин мелких участков, на каждом из которых интегрирование точно.
+		/// </summary>
+		private sealed class ArcLength
+		{
+			private const int Count = 4096;
+			private readonly ParametricCurve _curve;
+			private readonly double[] _sums = new double[Count + 1];
+
+			public ArcLength(ParametricCurve curve)
+			{
+				_curve = curve;
+				for (var i = 1; i <= Count; i++)
+				{
+					_sums[i] = _sums[i - 1] + curve.GetDistance((i - 1D)/Count, (double) i/Count);
+				}
+			}
+
+			public double Length => _sums[Count];
+
+			public double At(double t)
+			{
+				var k = (int) System.Math.Min(Count - 1, System.Math.Floor(t*Count));
+				return _sums[k] + _curve.GetDistance((double) k/Count, t);
+			}
 		}
 
 		private class ValueOnlyCurve : ParametricCurve
@@ -476,6 +513,175 @@ namespace Ruzil3D.Tests
 
 			Assert.Equal(2, curves[0].GetDistance(0.25, 0.75), 12);
 			Assert.Equal(System.Math.PI/4, curves[3].GetDistance(0.25, 0.75), 12);
+		}
+
+		[Fact]
+		public void DistanceCompiler_CuspAtHighAccuracy()
+		{
+			// Прежде при acc = 12 и 14 расстояния до узлов переставали возрастать, и GetParameter(L/2) для кривой
+			// с точкой возврата возвращал 0 вместо 0.5.
+			var cusp = Cusp();
+			foreach (var accuracy in new[] {12, 14})
+			{
+				var compiler = new ParametricCurveDistanceCompiler<BezierCurve>(cusp, accuracy);
+				Assert.InRange(compiler.GetParameter(cusp.Length/2), 0.5 - 1e-6, 0.5 + 1e-6);
+			}
+
+			// По симметрии «шпильки» середина её длины соответствует t = 0.5, а скорость там всего 0.015, поэтому
+			// расстоянию 7.500013 (на 3e-7 больше половины длины) соответствует t ≈ 0.5 ± 2e-4. Прежде получался конец кривой.
+			var hairpin = Hairpin();
+			foreach (var accuracy in new[] {12, 14})
+			{
+				var compiler = new ParametricCurveDistanceCompiler<BezierCurve>(hairpin, accuracy);
+				Assert.InRange(compiler.GetParameter(hairpin.Length/2), 0.5 - 1e-9, 0.5 + 1e-9);
+				Assert.InRange(compiler.GetParameter(7.500013), 0.4995, 0.5005);
+			}
+		}
+
+		[Fact]
+		public void DistanceCompiler_MonotoneAndAccurate()
+		{
+			var curves = new[]
+			{
+				Cusp(), Hairpin(),
+				new BezierCurve(new Point3D(0, 0, 0), new Point3D(1, 2, 0), new Point3D(3, 2, 0), new Point3D(4, 0, 0))
+			};
+
+			foreach (var curve in curves)
+			{
+				var arcLength = new ArcLength(curve);
+
+				foreach (var accuracy in new[] {6, 10, 14})
+				{
+					foreach (var type in new[] {EApproximationType.Default, EApproximationType.Linear})
+					{
+						var compiler = new ParametricCurveDistanceCompiler<BezierCurve>(curve, accuracy, type);
+						var length = curve.Length;
+						var tolerance = accuracy == 6 ? 1e-3 : accuracy == 10 ? 1e-5 : 1e-7;
+
+						var previous = 0D;
+						for (var i = 0; i <= 2000; i++)
+						{
+							var distance = System.Math.Min(length, length*i/2000);
+							var parameter = compiler.GetParameter(distance);
+
+							// Параметр не убывает, а доля длины до него совпадает с долей заданного расстояния.
+							Assert.True(parameter >= previous, "Параметр убывает: acc = " + accuracy + ", s = " + distance);
+							Assert.InRange(arcLength.At(parameter)/arcLength.Length - distance/length, -tolerance, tolerance);
+							previous = parameter;
+						}
+
+						Assert.Equal(0, compiler.GetParameter(0));
+						Assert.Equal(1, compiler.GetParameter(length));
+					}
+				}
+			}
+		}
+
+		[Fact]
+		public void DistanceCompiler_GetArgumentInvertsGetValue()
+		{
+			// Прежде обратная функция не была реализована ни в одной из внутренних аппроксимаций.
+			var field = typeof(ParametricCurveDistanceCompiler<BernsteinCurve>).GetField("_approx", BindingFlags.NonPublic | BindingFlags.Instance);
+			var curves = new BernsteinCurve[] {Cusp(), new LineCurve(Point3D.Empty, new Point3D(3, 4, 0))};
+
+			foreach (var curve in curves)
+			{
+				foreach (var type in new[] {EApproximationType.Default, EApproximationType.Linear})
+				{
+					var compiler = new ParametricCurveDistanceCompiler<BernsteinCurve>(curve, 8, type);
+					compiler.GetParameter(0);
+					var approximation = (IMonotonicFunctionApproximation) field.GetValue(compiler);
+
+					Assert.Equal(0, approximation.LArgument);
+					Assert.Equal(curve.Length, approximation.RArgument);
+					for (var i = 0; i <= 100; i++)
+					{
+						var distance = curve.Length*i/100;
+						Assert.Equal(distance, approximation.GetArgument(approximation.GetValue(distance)), 9);
+					}
+				}
+			}
+		}
+
+		[Fact]
+		public void DistanceCompiler_ZeroLengthCurves()
+		{
+			// Прежде расстояние делилось на нулевую длину, и вместо начальной точки получались точки NaN.
+			var point = new Point3D(1, 2, 3);
+
+			var line = new ParametricCurveDistanceCompiler<LineCurve>(new LineCurve(point, point));
+			Assert.Equal(point, line.GetValue(0));
+			Assert.Equal(0, line.GetParameter(0));
+
+			var bezier = new ParametricCurveDistanceCompiler<BezierCurve>(new BezierCurve(point, point, point, point));
+			Assert.Equal(point, bezier.GetValue(0));
+			Assert.Equal(0, bezier.GetParameter(0));
+
+			var arc = new ParametricCurveDistanceCompiler<EllipticArcCurve>(new EllipticArcCurve(1, 0.3, 0));
+			TestUtil.Near(new Point3D(System.Math.Cos(0.3), System.Math.Sin(0.3), 0), arc.GetValue(0));
+
+			var path = new Beziers(new[]
+			{
+				new Point3D(0, 0, 0), new Point3D(1, 0, 0), new Point3D(2, 0, 0), new Point3D(3, 0, 0),
+				new Point3D(3, 0, 0), new Point3D(3, 0, 0), new Point3D(3, 0, 0)
+			});
+
+			Assert.Equal(3, path.Length, 12);
+			TestUtil.Near(new Point3D(3, 0, 0), path.GetValue(path.Length), 1e-12);
+
+			var details = path.GetDetails(path.Length);
+			Assert.Equal(0, details.Parameter);
+			Assert.Equal(0, details.Distance);
+		}
+
+		[Fact]
+		public void DistanceCompiler_RangeChecks()
+		{
+			// Прежде выход за длину кривой приводил для отрезка к ArgumentException без имени параметра,
+			// а для кривой Безье — к ArgumentOutOfRangeException для аргумента x.
+			var line = new LineCurve(Point3D.Empty, new Point3D(4, 0, 0));
+			var lineCompiler = new ParametricCurveDistanceCompiler<LineCurve>(line);
+			var bezier = new BezierCurve(new Point3D(0, 0, 0), new Point3D(1, 2, 0), new Point3D(3, 2, 0), new Point3D(4, 0, 0));
+			var bezierCompiler = new ParametricCurveDistanceCompiler<BezierCurve>(bezier);
+
+			Assert.Equal("distance", Assert.Throws<ArgumentOutOfRangeException>(() => lineCompiler.GetValue(4.0000000000000009)).ParamName);
+			Assert.Equal("distance", Assert.Throws<ArgumentOutOfRangeException>(() => bezierCompiler.GetValue(bezier.Length*(1 + 1e-15))).ParamName);
+			Assert.Equal("distance", Assert.Throws<ArgumentOutOfRangeException>(() => bezierCompiler.GetParameter(-1e-12)).ParamName);
+
+			TestUtil.Near(new Point3D(4, 0, 0), lineCompiler.GetValue(4));
+			TestUtil.Near(bezier.P3, bezierCompiler.GetValue(bezier.Length));
+		}
+
+		[Fact]
+		public void ParametricCurves_CurveReplacedInCompiler()
+		{
+			// Прежде длины кривых сохранялись навсегда, и после замены кривой в компиляторе длина последовательности
+			// оставалась прежней: GetValue(Length) возвращал (3, 0, 0) вместо (30, 0, 0).
+			var single = new ParametricCurveDistanceCompiler<BezierCurve>(StraightBezier(3));
+			var path = new ParametricCurves<BezierCurve>(new[] {single});
+			Assert.Equal(3, path.Length, 10);
+
+			single.Curve = StraightBezier(30);
+
+			Assert.Equal(30, path.Length, 10);
+			TestUtil.Near(new Point3D(30, 0, 0), path.GetValue(path.Length), 1e-9);
+
+			var compiler = new ParametricCurveDistanceCompiler<BezierCurve>(StraightBezier(3));
+			var curves = new ParametricCurves<BezierCurve>(new[] {compiler, new ParametricCurveDistanceCompiler<BezierCurve>(StraightBezier(1) + new Point3D(3, 0, 0))});
+
+			Assert.Equal(4, curves.Length, 10);
+
+			compiler.Curve = StraightBezier(30);
+
+			Assert.Equal(31, curves.Length, 10);
+			TestUtil.Near(new Point3D(29.5, 0, 0), curves.GetValue(29.5), 1e-9);
+			TestUtil.Near(new Point3D(3.5, 0, 0), curves.GetValue(30.5), 1e-9);
+			TestUtil.Near(new Point3D(4, 0, 0), curves.GetValue(curves.Length), 1e-9);
+			Assert.Equal(0, curves.GetDetails(20).Index);
+			Assert.Equal(20, curves.GetDetails(20).Distance, 9);
+			Assert.Equal(1, curves.GetDetails(30.5).Index);
+			Assert.Equal(0.5, curves.GetDetails(30.5).Distance, 9);
 		}
 
 		#endregion
