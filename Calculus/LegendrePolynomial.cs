@@ -24,6 +24,11 @@ namespace Ruzil3D.Calculus
 		private static readonly List<Polynomial> Derivatives = new List<Polynomial>();
 		private static readonly List<Polynomial> GaussianDenominators = new List<Polynomial>();
 
+		//Все обращения к кэшам выполняются под этой блокировкой: прежде одновременное первое обращение
+		//из разных потоков (в том числе при инициализации правил Гаусса в Calculus) портило списки,
+		//и интегрирование оставалось сломанным до конца работы процесса.
+		private static readonly object CacheLock = new object();
+
 		/// <summary>
 		/// Получает производную от полинома Лежандра.
 		/// </summary>
@@ -31,19 +36,22 @@ namespace Ruzil3D.Calculus
 		{
 			get
 			{
-				if (Derivatives.Count <= Deg)
+				lock (CacheLock)
 				{
-					Derivatives.AddRange(new Polynomial[Deg - Derivatives.Count + 1]);
+					if (Derivatives.Count <= Deg)
+					{
+						Derivatives.AddRange(new Polynomial[Deg - Derivatives.Count + 1]);
+					}
+
+					var result = Derivatives[Deg];
+
+					if (result == null)
+					{
+						Derivatives[Deg] = result = GetDerivative();
+					}
+
+					return result;
 				}
-
-				var result = Derivatives[Deg];
-
-				if (result == null)
-				{
-					Derivatives[Deg] = result = GetDerivative();
-				}
-
-				return result;
 			}
 
 		}
@@ -55,19 +63,22 @@ namespace Ruzil3D.Calculus
 		{
 			get
 			{
-				if (GaussianDenominators.Count <= Deg)
+				lock (CacheLock)
 				{
-					GaussianDenominators.AddRange(new Polynomial[Deg - GaussianDenominators.Count + 1]);
+					if (GaussianDenominators.Count <= Deg)
+					{
+						GaussianDenominators.AddRange(new Polynomial[Deg - GaussianDenominators.Count + 1]);
+					}
+
+					var result = GaussianDenominators[Deg];
+
+					if (result == null)
+					{
+						GaussianDenominators[Deg] = result = Derivative * Derivative * new Polynomial(1, 0, -1);
+					}
+
+					return result;
 				}
-
-				var result = GaussianDenominators[Deg];
-
-				if (result == null)
-				{
-					GaussianDenominators[Deg] = result = Derivative * Derivative * new Polynomial(1, 0, -1);
-				}
-
-				return result;
 			}
 
 		}
@@ -133,24 +144,27 @@ namespace Ruzil3D.Calculus
 				return 0;
 			}
 
-			if (Roots.Count <= Deg)
+			lock (CacheLock)
 			{
-				Roots.AddRange(new double[Deg - Roots.Count + 1][]);
+				if (Roots.Count <= Deg)
+				{
+					Roots.AddRange(new double[Deg - Roots.Count + 1][]);
+				}
+
+				if (Roots[Deg] == null)
+				{
+					Roots[Deg] = new double[Deg / 2];
+				}
+
+				var result = Roots[Deg][index];
+
+				if (result.Equals(0D))
+				{
+					Roots[Deg][index] = result = ResolveRoot(index);
+				}
+
+				return result;
 			}
-
-			if (Roots[Deg] == null)
-			{
-				Roots[Deg] = new double[Deg / 2];
-			}
-
-			var result = Roots[Deg][index];
-
-			if (result.Equals(0D))
-			{
-				Roots[Deg][index] = result = ResolveRoot(index);
-			}
-
-			return result;
 		}
 
 		/// <summary>
@@ -170,24 +184,27 @@ namespace Ruzil3D.Calculus
 				return GaussianWeight(Deg - index - 1);
 			}
 
-			if (GaussianWeights.Count <= Deg)
+			lock (CacheLock)
 			{
-				GaussianWeights.AddRange(new double[Deg - GaussianWeights.Count + 1][]);
+				if (GaussianWeights.Count <= Deg)
+				{
+					GaussianWeights.AddRange(new double[Deg - GaussianWeights.Count + 1][]);
+				}
+
+				if (GaussianWeights[Deg] == null)
+				{
+					GaussianWeights[Deg] = new double[(Deg + 1) / 2];
+				}
+
+				var result = GaussianWeights[Deg][index];
+
+				if (result.Equals(0))
+				{
+					GaussianWeights[Deg][index] = result = 2 / GaussianDenominator.GetValue(Root(index));
+				}
+
+				return result;
 			}
-
-			if (GaussianWeights[Deg] == null)
-			{
-				GaussianWeights[Deg] = new double[(Deg + 1) / 2];
-			}
-
-			var result = GaussianWeights[Deg][index];
-
-			if (result.Equals(0))
-			{
-				GaussianWeights[Deg][index] = result = 2 / GaussianDenominator.GetValue(Root(index));
-			}
-
-			return result;
 		}
 
 		/// <summary>

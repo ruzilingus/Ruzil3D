@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using Ruzil3D.Algebra;
 using static Ruzil3D.Math;
 
@@ -974,8 +975,15 @@ namespace Ruzil3D.Utility
 		}
 
 
-		private static Dictionary<object, string> _toStringHash = new Dictionary<object, string>();
+		private static readonly Dictionary<object, string> ToStringHash = new Dictionary<object, string>();
 
+		/// <summary>
+		/// Сохраняет строковое представление объекта в общем кэше.
+		/// </summary>
+		/// <param name="key">Ключ кэша. Должен однозначно определяться значением объекта и не изменяться после сохранения.</param>
+		/// <param name="value">Строковое представление.</param>
+		/// <remarks>Метод потокобезопасен.</remarks>
+		/// <exception cref="ArgumentNullException">Значение параметра <paramref name="key"/> или <paramref name="value"/> равно <b>null</b>.</exception>
 		public static void AddToStringHashValue(object key, string value)
 		{
 			if (ReferenceEquals(value, null))
@@ -983,23 +991,58 @@ namespace Ruzil3D.Utility
 				throw new ArgumentNullException(nameof(value), "Параметр \"" + nameof(value) + "\" не должен равняться null.");
 			}
 
-			lock (_toStringHash)
+			//Все обращения к словарю выполняются под блокировкой: прежде запись и чтение шли без неё,
+			//и одновременные вызовы ToString из разных потоков необратимо портили словарь.
+			lock (ToStringHash)
 			{
-				if (_toStringHash.Count > 256)
+				if (ToStringHash.Count > 256)
 				{
 					for (var i = 0; i < 128; i++)
 					{
-						_toStringHash.Remove(_toStringHash.Keys.First());
+						ToStringHash.Remove(ToStringHash.Keys.First());
 					}
 				}
-			}
 
-			_toStringHash[key] = value;
+				ToStringHash[key] = value;
+			}
 		}
 
+		/// <summary>
+		/// Возвращает ключ общего кэша строковых представлений для объекта, заданного набором чисел.
+		/// </summary>
+		/// <param name="kind">Вид объекта.</param>
+		/// <param name="format">Формат вывода.</param>
+		/// <param name="values">Числа, однозначно задающие объект.</param>
+		/// <returns>Ключ кэша.</returns>
+		/// <remarks>Ключ строится по значениям, а не по объекту: прежде ключом служили изменяемые структуры и хэш-код
+		/// массива, и кэш возвращал устаревшие или чужие строки. В ключ входит текущая культура, от которой зависит вывод чисел.</remarks>
+		internal static string GetToStringHashKey(string kind, string format, IEnumerable<double> values)
+		{
+			var key = new StringBuilder();
+			key.Append(kind).Append('|').Append(CultureInfo.CurrentCulture.Name).Append('|').Append(format).Append('|');
+
+			foreach (var value in values)
+			{
+				key.Append(value.ToString("G17", CultureInfo.InvariantCulture)).Append(';');
+			}
+
+			return key.ToString();
+		}
+
+		/// <summary>
+		/// Возвращает строковое представление объекта из общего кэша.
+		/// </summary>
+		/// <param name="key">Ключ кэша.</param>
+		/// <returns>Сохранённое строковое представление или <b>null</b>, если его нет в кэше.</returns>
+		/// <remarks>Метод потокобезопасен.</remarks>
+		/// <exception cref="ArgumentNullException">Значение параметра <paramref name="key"/> равно <b>null</b>.</exception>
 		public static string GetToStringHashValue(object key)
 		{
-			return _toStringHash.ContainsKey(key) ? _toStringHash[key] : null;
+			lock (ToStringHash)
+			{
+				string value;
+				return ToStringHash.TryGetValue(key, out value) ? value : null;
+			}
 		}
 	}
 }

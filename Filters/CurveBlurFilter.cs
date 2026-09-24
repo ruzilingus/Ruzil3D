@@ -15,9 +15,47 @@ namespace Ruzil3D.Filters
         private readonly ICurveInterpolation _linearCompiler;
 
         #region Search Corners
-        private double _cornerBreakPoint;
-        private double _cornerDoubleBreakPoint;
-        private Point3D _cornerDoubleBreakValue;
+
+        /// <summary>
+        /// Продолжение кривой за точку излома центральной симметрией относительно этой точки.
+        /// </summary>
+        /// <remarks>Прежде точка излома хранилась в полях фильтра, и одновременные вызовы
+        /// <see cref="SearchCorners(double, double, double)"/> и <see cref="GetCorrection"/> из разных потоков портили друг другу результат.</remarks>
+        private sealed class Corner
+        {
+            private readonly ICurveInterpolation _linearCompiler;
+            private readonly double _breakPoint;
+            private readonly double _doubleBreakPoint;
+            private readonly Point3D _doubleBreakValue;
+
+            public Corner(ICurveInterpolation linearCompiler, double breakPoint)
+            {
+                _linearCompiler = linearCompiler;
+                _breakPoint = breakPoint;
+                _doubleBreakPoint = 2 * breakPoint;
+                _doubleBreakValue = 2 * linearCompiler.GetValue3D(breakPoint);
+            }
+
+            //Кривая до точки излома и её продолжение после неё
+            public Point3D GetValue1(double d)
+            {
+                if (d <= _breakPoint)
+                {
+                    return _linearCompiler.GetValue3D(d);
+                }
+                return _doubleBreakValue - _linearCompiler.GetValue3D(_doubleBreakPoint - d);
+            }
+
+            //Кривая после точки излома и её продолжение до неё
+            public Point3D GetValue2(double d)
+            {
+                if (d >= _breakPoint)
+                {
+                    return _linearCompiler.GetValue3D(d);
+                }
+                return _doubleBreakValue - _linearCompiler.GetValue3D(_doubleBreakPoint - d);
+            }
+        }
 
         private struct CIndexValue : IComparable
         {
@@ -42,36 +80,16 @@ namespace Ruzil3D.Filters
             }
         }
 
-        private Point3D corner_GetValue1(double d)
-        {
-            if (d <= _cornerBreakPoint)
-            {
-                return _linearCompiler.GetValue3D(d);
-            }
-            return _cornerDoubleBreakValue - _linearCompiler.GetValue3D(_cornerDoubleBreakPoint - d);
-        }
-
-        private Point3D corner_GetValue2(double d)
-        {
-            if (d >= _cornerBreakPoint)
-            {
-                return _linearCompiler.GetValue3D(d);
-            }
-            return _cornerDoubleBreakValue - _linearCompiler.GetValue3D(_cornerDoubleBreakPoint - d);
-        }
-
         //Окрестность для вычисления приращения
         private const double Delta = 0.000000001D;
 
         public Point3D GetCorrection(double value)
         {
-            _cornerBreakPoint = value;
-            _cornerDoubleBreakPoint = 2 * _cornerBreakPoint;
-            _cornerDoubleBreakValue = 2 * _linearCompiler.GetValue3D(value);
+            var corner = new Corner(_linearCompiler, value);
 
             //Вычисляем приращения по разную сторону точки
-            var diff1 = -_blurCompiler.GetDifferential(corner_GetValue1, _cornerBreakPoint, Delta);
-            var diff2 = _blurCompiler.GetDifferential(corner_GetValue2, _cornerBreakPoint, Delta);
+            var diff1 = -_blurCompiler.GetDifferential(corner.GetValue1, value, Delta);
+            var diff2 = _blurCompiler.GetDifferential(corner.GetValue2, value, Delta);
 
             //Угол функции в данной точке
             var cos = diff1.Cos(diff2);
@@ -109,7 +127,7 @@ namespace Ruzil3D.Filters
             var bestPoints = new List<CIndexValue>();
             var distanceArray = new double[_linearCompiler.Length];
 
-            _cornerBreakPoint = 0;
+            var breakPoint = 0D;
             var lastPoint = _linearCompiler[0];
 
             var len = closed ? _linearCompiler.Length - 1 : _linearCompiler.Length;
@@ -119,30 +137,29 @@ namespace Ruzil3D.Filters
                 var curPoint = _linearCompiler[i];
 
                 //Заполняем вспомогательные значения
-                _cornerBreakPoint += lastPoint.Distance(curPoint);
-                _cornerDoubleBreakPoint = 2 * _cornerBreakPoint;
+                breakPoint += lastPoint.Distance(curPoint);
                 lastPoint = curPoint;
-                distanceArray[i] = _cornerBreakPoint;
+                distanceArray[i] = breakPoint;
 
                 if (!closed)
                 {
-                    if (_cornerBreakPoint < smoothness)
+                    if (breakPoint < smoothness)
                     {
                         //Игнорируем начальные точки
                         continue;
                     }
-                    if (maxDistance - _cornerBreakPoint < smoothness)
+                    if (maxDistance - breakPoint < smoothness)
                     {
                         //Игнорируем конечные точки
                         break;
                     }
                 }
 
-                _cornerDoubleBreakValue = 2 * _linearCompiler.GetValue3D(_cornerBreakPoint);
+                var corner = new Corner(_linearCompiler, breakPoint);
 
                 //Вычисляем приращения по разную сторону точки
-                var diff1 = _blurCompiler.GetDifferential(corner_GetValue1, _cornerBreakPoint, Delta, scale);
-                var diff2 = _blurCompiler.GetDifferential(corner_GetValue2, _cornerBreakPoint, Delta, scale);
+                var diff1 = _blurCompiler.GetDifferential(corner.GetValue1, breakPoint, Delta, scale);
+                var diff2 = _blurCompiler.GetDifferential(corner.GetValue2, breakPoint, Delta, scale);
 
                 //Угол функции в данной точке
                 var value = diff1.Cos(diff2);

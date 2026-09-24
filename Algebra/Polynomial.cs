@@ -216,7 +216,7 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Кэш полиномов Бернштейна.
 		/// </summary>
-		private static Polynomial[][] _bernsteins;
+		private static readonly Polynomial[][] Bernsteins = new Polynomial[BernsteinsCashSize][];
 
 		/// <summary>
 		/// Вычисляет и возвращает базисный полином Бернштейна.
@@ -260,17 +260,13 @@ namespace Ruzil3D.Algebra
 				return CalculateBernstein(k, n);
 			}
 
-			if (_bernsteins == null)
+			//Кэш заполняется под блокировкой: прежде одновременная ленивая инициализация из разных потоков
+			//могла заменить уже заполненный массив и привести к NullReferenceException.
+			lock (Bernsteins)
 			{
-				_bernsteins = new Polynomial[BernsteinsCashSize][];
+				var polynomials = Bernsteins[n] ?? (Bernsteins[n] = new Polynomial[n + 1]);
+				return polynomials[k] ?? (polynomials[k] = CalculateBernstein(k, n));
 			}
-
-			if (_bernsteins[n] == null)
-			{
-				_bernsteins[n] = new Polynomial[n + 1];
-			}
-
-			return _bernsteins[n][k] ?? (_bernsteins[n][k] = CalculateBernstein(k, n));
 		}
 
 		#endregion
@@ -1893,7 +1889,10 @@ namespace Ruzil3D.Algebra
 		public string ToString(string format)
 		{
 			format = string.IsNullOrEmpty(format) ? "x" : format;
-			var key = A.GetHashCode() + "_" + format;
+
+			//Ключ кэша строится по коэффициентам: прежде он строился по хэш-коду массива, и многочлены
+			//с совпавшими хэш-кодами получали чужое строковое представление.
+			var key = CStatic.GetToStringHashKey(nameof(Polynomial), format, A);
 
 			var result = CStatic.GetToStringHashValue(key);
 			if (result != null) return result;

@@ -217,7 +217,11 @@ namespace Ruzil3D.Algebra
 		/// </remarks>
 		public override string ToString()
 		{
-			var result = CStatic.GetToStringHashValue(this);
+			//Ключ кэша строится по значениям: структура делит изменяемый массив A с копиями,
+			//поэтому прежний ключ (сама структура) менялся вместе с ним.
+			var key = CStatic.GetToStringHashKey(nameof(Linear), null, A.Concat(new[] {Y}));
+
+			var result = CStatic.GetToStringHashValue(key);
 			if (result != null) return result;
 			result = "";
 
@@ -231,7 +235,7 @@ namespace Ruzil3D.Algebra
 			result += " = " + CStatic.DoubleToString(Y);
 
 
-			CStatic.AddToStringHashValue(this, result);
+			CStatic.AddToStringHashValue(key, result);
 			return result;
 		}
 	}
