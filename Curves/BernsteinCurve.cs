@@ -141,8 +141,8 @@ namespace Ruzil3D.Curves
 		/// <exception cref="ArgumentOutOfRangeException">Параметр меньше 0 или больше 1.</exception>
 		private static void CheckParameter(double parameter)
 		{
-			//Прежде GetValue выбрасывал ArgumentException без имени параметра, а GetTangent и GetCurvature принимали любые
-			//значения. Теперь все методы одинаково выбрасывают ArgumentOutOfRangeException (наследник ArgumentException).
+			//Прежде GetValue выбрасывал ArgumentException без имени параметра. Теперь выбрасывается ArgumentOutOfRangeException
+			//(наследник ArgumentException) с именем параметра.
 			if (parameter < 0 || parameter > 1)
 			{
 				throw new ArgumentOutOfRangeException(nameof(parameter), parameter,
@@ -565,13 +565,11 @@ namespace Ruzil3D.Curves
 		/// </summary>
 		/// <param name="parameter">Параметр кривой от 0 до 1.</param>
 		/// <returns>Единичный вектор касательной, направленный в сторону возрастания параметра, представленный структурой <see cref="Point3D"/>.</returns>
-		/// <exception cref="ArgumentOutOfRangeException">Параметр <paramref name="parameter"/> меньше 0 или больше 1.</exception>
 		/// <remarks>В особой точке, где первая производная равна нулю, направление касательной задаёт первая ненулевая
-		/// производная старшего порядка; в конечной точке кривой (<paramref name="parameter"/> = 1) возвращается левая касательная.</remarks>
+		/// производная старшего порядка; в конечной точке кривой (<paramref name="parameter"/> = 1) возвращается левая касательная.
+		/// Для параметра вне отрезка [0, 1] касательная вычисляется для продолжения кривой (как и прежде).</remarks>
 		public override Point3D GetTangent(double parameter)
 		{
-			CheckParameter(parameter);
-
 			//Производные вычисляются по разностям узловых точек, а не по многочленам в степенном базисе: прежде в конце
 			//кривой с совпадающими последними узлами (P2 = P3) первая производная получалась не нулевой, а порядка 1e-15,
 			//особая точка не распознавалась, и касательная имела случайное направление.
@@ -630,12 +628,10 @@ namespace Ruzil3D.Curves
 		/// </summary>
 		/// <param name="parameter">Параметр кривой от 0 до 1.</param>
 		/// <returns>Значение вектора кривизны представленный структурой <see cref="Point3D"/>.</returns>
-		/// <exception cref="ArgumentOutOfRangeException">Параметр <paramref name="parameter"/> меньше 0 или больше 1.</exception>
-		/// <remarks>Псевдовектор кривизны направлен перпендикулярно к плоскости образованной векторами нормали и касательной.</remarks>
+		/// <remarks>Псевдовектор кривизны направлен перпендикулярно к плоскости образованной векторами нормали и касательной.
+		/// Для параметра вне отрезка [0, 1] кривизна вычисляется для продолжения кривой (как и прежде).</remarks>
 		public override Point3D GetCurvature(double parameter)
 		{
-			CheckParameter(parameter);
-
 			//Первая производная
 			var v1 = GetDerivative(1, parameter);
 

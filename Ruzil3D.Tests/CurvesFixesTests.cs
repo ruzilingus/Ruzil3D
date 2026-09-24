@@ -328,14 +328,16 @@ namespace Ruzil3D.Tests
 		[Fact]
 		public void BernsteinCurve_ParameterRangeChecks()
 		{
-			// Прежде GetValue выбрасывал ArgumentException без имени параметра, а GetTangent и GetCurvature принимали
-			// любые значения.
+			// Прежде GetValue выбрасывал ArgumentException без имени параметра. GetTangent и GetCurvature, как и прежде,
+			// принимают любые значения и вычисляются для продолжения кривой.
 			var curve = new BezierCurve(new Point3D(0, 0, 0), new Point3D(1, 2, 0), new Point3D(3, 2, 0), new Point3D(4, 0, 0));
 
 			Assert.Equal("parameter", Assert.Throws<ArgumentOutOfRangeException>(() => curve.GetValue(1.0000000000000002)).ParamName);
 			Assert.Equal("parameter", Assert.Throws<ArgumentOutOfRangeException>(() => curve.GetValue(-1e-300)).ParamName);
-			Assert.Equal("parameter", Assert.Throws<ArgumentOutOfRangeException>(() => curve.GetTangent(1.5)).ParamName);
-			Assert.Equal("parameter", Assert.Throws<ArgumentOutOfRangeException>(() => curve.GetCurvature(-1)).ParamName);
+
+			// Производная кубической кривой в t = 1.5: 3·[(1−t)²(P1−P0) + 2t(1−t)(P2−P1) + t²(P3−P2)] = (−1.5, −12, 0).
+			TestUtil.Near(new Point3D(-1.5, -12, 0)/new Point3D(-1.5, -12, 0).Length, curve.GetTangent(1.5));
+			Assert.False(curve.GetCurvature(-1).IsNaN);
 
 			var line = new LineCurve(Point3D.Empty, new Point3D(1, 0, 0));
 			Assert.Throws<ArgumentOutOfRangeException>(() => line.GetValue(2));
