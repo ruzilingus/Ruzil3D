@@ -22,6 +22,9 @@ namespace Ruzil3D.Calculus
 		private static readonly List<double[]> Roots = new List<double[]>();
 		private static readonly List<double[]> GaussianWeights = new List<double[]>();
 		private static readonly List<Polynomial> Derivatives = new List<Polynomial>();
+
+		//Прежде здесь кэшировались многочлены (1 - x²)·P′(x)² для вычисления весов. Теперь веса вычисляются по значению
+		//производной в корне (см. GaussianWeight), но список сохранён: тесты потокобезопасности очищают кэши по имени.
 		private static readonly List<Polynomial> GaussianDenominators = new List<Polynomial>();
 
 		//Все обращения к кэшам выполняются под этой блокировкой: прежде одновременное первое обращение
@@ -48,33 +51,6 @@ namespace Ruzil3D.Calculus
 					if (result == null)
 					{
 						Derivatives[Deg] = result = GetDerivative();
-					}
-
-					return result;
-				}
-			}
-
-		}
-
-		/// <summary>
-		/// Получает полином <i>(1-x²)[ρ`(x)]²</i> для вычисления весов для квадратурного метода Гаусса.
-		/// </summary>
-		private Polynomial GaussianDenominator
-		{
-			get
-			{
-				lock (CacheLock)
-				{
-					if (GaussianDenominators.Count <= Deg)
-					{
-						GaussianDenominators.AddRange(new Polynomial[Deg - GaussianDenominators.Count + 1]);
-					}
-
-					var result = GaussianDenominators[Deg];
-
-					if (result == null)
-					{
-						GaussianDenominators[Deg] = result = Derivative * Derivative * new Polynomial(1, 0, -1);
 					}
 
 					return result;
@@ -200,7 +176,12 @@ namespace Ruzil3D.Calculus
 
 				if (result.Equals(0))
 				{
-					GaussianWeights[Deg][index] = result = 2 / GaussianDenominator.GetValue(Root(index));
+					//Вес w = 2/((1 - x²)·P′(x)²) вычисляется по значению производной в корне. Прежде вычислялось значение
+					//раскрытого многочлена (1 - x²)·P′(x)² с коэффициентами до 3,5e7, и из-за вычитания близких чисел
+					//относительная погрешность весов при n = 10 достигала 2e-11, а их сумма отличалась от 2 на 5,6e-12.
+					var root = Root(index);
+					var derivative = Derivative.GetValue(root);
+					GaussianWeights[Deg][index] = result = 2 / ((1 - root * root) * derivative * derivative);
 				}
 
 				return result;
@@ -227,7 +208,9 @@ namespace Ruzil3D.Calculus
 					return;
 
 				case 2:
-					A = new[] { -1D, 0, 1.5D };
+					//P₂(x) = (3x² - 1)/2. Прежде свободный член был равен -1, и P₂(1) = 0,5, а корни и веса
+					//двухточечной квадратуры Гаусса были неверными.
+					A = new[] { -1 / 2D, 0, 3 / 2D };
 					return;
 
 				case 3:
@@ -273,7 +256,7 @@ namespace Ruzil3D.Calculus
 		/// <remarks>
 		/// <code>
 		/// var pol = new LegendrePolynomial(6);
-		/// Console.Write(pol); //Результат: -5/16 + 105/16 x² - 315/16 x⁴ + 231/16 x⁶, alternative: (231 x⁶ - 315 x⁴ + 105 x² - 5) / 16
+		/// Console.Write(pol); //Результат: 231/16 x⁶ - 315/16 x⁴ + 105/16 x² - 5/16, alternative: (231 x⁶ - 315 x⁴ + 105 x² - 5) / 16
 		/// </code>
 		/// </remarks>
 		public override string ToString()
