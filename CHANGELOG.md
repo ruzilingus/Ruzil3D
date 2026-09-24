@@ -29,7 +29,7 @@
 - `ParametricCurves.GetValue` и `GetDetails` для пустой последовательности — `InvalidOperationException` (раньше бесконечный поиск).
 - `ParametricCurveDistanceCompiler`: точность вне 1…30 — `ArgumentOutOfRangeException` и в конструкторе; `GetParameter` и `GetValue` для расстояния вне [0, `Length`] — `ArgumentOutOfRangeException` с именем `distance`.
 - `BernsteinCurve.GetValue` вне отрезка [0, 1] — `ArgumentOutOfRangeException` (наследник прежнего `ArgumentException`) с именем параметра. `GetTangent` и `GetCurvature`, как и раньше, вычисляются для продолжения кривой.
-- `Polynomial.GetPolynomial(params PointD[])`: точки с одинаковой координатой X — `ArgumentException`; для одной точки возвращается постоянный многочлен вместо `null`.
+- `Polynomial.GetPolynomial(params PointD[])` и `GetPolynomial(PointD, PointD)`: точки с одинаковой координатой X — `ArgumentException` (раньше многочлен с бесконечными коэффициентами); для одной точки возвращается постоянный многочлен вместо `null`.
 - `Line3D`: бесконечные координаты — `ArgumentException`.
 - `Math.GreatestDivisor(Fraction)`: переполнение дробей — `OverflowException` (раньше бесконечный цикл).
 - `CurveInterpolationCompiler`: пустая кривая и кривая из совпадающих точек — `ArgumentException`.

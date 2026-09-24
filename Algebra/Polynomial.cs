@@ -115,9 +115,18 @@ namespace Ruzil3D.Algebra
 		/// <param name="point0">Первая точка.</param>
 		/// <param name="point1">Вторая точка.</param>
 		/// <returns>Интерполяционный полином.</returns>
+		/// <exception cref="ArgumentException">Точки имеют одинаковую координату X.</exception>
 		public static Polynomial GetPolynomial(PointD point0, PointD point1)
 		{
-			var k = (point1.Y - point0.Y) / (point1.X - point0.X);
+			//Прежде деление на ноль давало многочлен с бесконечными коэффициентами или NaN,
+			//хотя перегрузка для массива точек в этом случае выбрасывает исключение.
+			var d = point1.X - point0.X;
+			if (d.Equals(0D))
+			{
+				throw new ArgumentException("Точки интерполяции должны иметь разные координаты X.", nameof(point1));
+			}
+
+			var k = (point1.Y - point0.Y) / d;
 			return new Polynomial(point0.Y - point0.X * k, k);
 		}
 

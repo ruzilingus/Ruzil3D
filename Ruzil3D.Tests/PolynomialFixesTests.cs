@@ -352,6 +352,16 @@ namespace Ruzil3D.Tests
 		}
 
 		[Fact]
+		public void GetPolynomial_TwoPointsWithSameX_Throws()
+		{
+			// Прежде перегрузка для двух точек возвращала многочлен с бесконечными коэффициентами (или NaN для совпадающих точек).
+			Assert.Equal("point1", Assert.Throws<ArgumentException>(() => Polynomial.GetPolynomial(new PointD(1, 1), new PointD(1, 2))).ParamName);
+			Assert.Throws<ArgumentException>(() => Polynomial.GetPolynomial(new PointD(1, 1), new PointD(1, 1)));
+
+			Assert.True(Polynomial.GetPolynomial(new PointD(1, 3), new PointD(3, 7)) == new Polynomial(1, 2));
+		}
+
+		[Fact]
 		public void GetHashCode_IsConsistentWithEquality()
 		{
 			// Прежде хэш-код всегда был равен 0.
