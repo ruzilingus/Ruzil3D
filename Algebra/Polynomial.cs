@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using Ruzil3D.Calculus;
 using Ruzil3D.Utility;
 using static Ruzil3D.Math;
@@ -283,341 +282,497 @@ namespace Ruzil3D.Algebra
 
 		#region Resolve methods
 
-		private static Complex[] ResolveSquare(Complex a, Complex b, Complex c, bool multiple = true)
-		{
-			//Приведение к каноническому виду
-			var k = b / 2D;
-
-			//Дискриминант
-			var discr = k * k - a * c;
-
-			if (multiple || discr != Complex.Empty)
-			{
-				var discrSqrt = discr.Pow(0.5D);
-				return a.R > 0
-					? new[] {(-k - discrSqrt)/a, (-k + discrSqrt)/a}
-					: new[] {(-k + discrSqrt)/a, (-k - discrSqrt)/a};
-			}
-			else
-			{
-				return new[] { -k / a };
-			}
-		}
-
-		private static double[] ResolveSquareReal(double a, double b, double c, bool multiple = true)
-		{
-			//Приведение к каноническому виду
-			var k = b / 2D;
-
-			//Дискриминант
-			var discr = k * k - a * c;
-
-			if (discr < 0)
-			{
-				return EmptyArray;
-			}
-
-			if (multiple || !discr.Equals(0D))
-			{
-				var discrSqrt = Sqrt(discr);
-				return a > 0 ? new[] { (-k - discrSqrt) / a, (-k + discrSqrt) / a } : new[] { (-k + discrSqrt) / a, (-k - discrSqrt) / a };
-			}
-			else
-			{
-				return new[] { -k / a };
-			}
-		}
-
-		private static Complex[] ResolveCubic(Complex a, Complex b, Complex c, Complex d)
-		{
-			var p = (3 * a * c - b * b) / (3 * a * a);
-			var q = (2 * b * b * b - 9 * a * b * c + 27 * a * a * d) / (27 * a * a * a);
-
-			var result2 = ResolveSquare(1, q, -p * p * p / 27);
-			var w = result2[0].GetRoots(3);
-
-			var dx = -b / (3 * a);
-			return new[]
-			{
-				w[0] - p/(3*w[0]) + dx,
-				w[1] - p/(3*w[1]) + dx,
-				w[2] - p/(3*w[2]) + dx
-			};
-		}
-
-		private static Complex[] ResolveCubic2(Complex a, Complex b, Complex c, Complex d)
-		{
-			//Метод Рузиля
-			var a3 = 3 * a;
-
-			var u = a3 * c - b * b;
-			var s = 2 * b * b * b - 9 * a * b * c + 27 * a * a * d;
-			var square = (s * s + 4 * u * u * u).Pow(0.5D) / 2 - s / 2;
-
-			var w = square.GetRoots(3);
-
-			return new[]
-			{
-				(w[0] - u/w[0] - b)/a3,
-				(w[1] - u/w[1] - b)/a3,
-				(w[2] - u/w[2] - b)/a3
-			};
-		}
-
-		
-		private static Complex[] ResolveCubic2(double a, double b, double c, double d)
-		{
-			//Метод Рузиля
-			var a3 = 3 * a;
-
-			var u = a3 * c - b * b;
-			var s = 2 * b * b * b - 9 * a * b * c + 27 * a * a * d;
-			var square = ((Complex)(s * s + 4 * u * u * u)).Pow(0.5D) / 2 - s / 2;
-
-			var w = square.GetRoots(3);
-
-			return new[]
-			{
-				(w[0] - u/w[0] - b)/a3,
-				(w[1] - u/w[1] - b)/a3,
-				(w[2] - u/w[2] - b)/a3
-			};
-		}
+		/// <summary>
+		/// Машинный эпсилон: разность между 1 и следующим за ним числом двойной точности (2⁻⁵²).
+		/// </summary>
+		private const double MachineEpsilon = 2.220446049250313E-16;
 
 		/// <summary>
-		/// Возвращает массив чисел являющихся корнями кубического уравнения.
+		/// Наибольшее число итераций уточнения простого корня. Бисекции достаточно около 2100 шагов, чтобы сжать любой
+		/// конечный промежуток до соседних чисел двойной точности; обычно метод Ньютона сходится за несколько шагов.
+		/// </summary>
+		private const int MaxRootIterations = 2200;
+
+		/// <summary>
+		/// Возвращает массив чисел являющихся корнями кубического уравнения <i>a x³ + b x² + c x + d</i> = 0.
 		/// </summary>
 		/// <param name="a">Коэффициент при x³.</param>
 		/// <param name="b">Коэффициент при x².</param>
 		/// <param name="c">Коэффициент при x.</param>
 		/// <param name="d">Свободный член.</param>
 		/// <param name="multiple">Параметр указывающий на необходимость учитывать кратность корней.</param>
-		/// <returns>Массив чисел являющихся корнями кубического уравнения.</returns>
+		/// <returns>Массив чисел являющихся вещественными корнями кубического уравнения, упорядоченных по возрастанию. Если <paramref name="a"/> равно 0, возвращаются корни уравнения меньшей степени.</returns>
 		public static double[] ResolveCubicReal(double a, double b, double c, double d, bool multiple = true)
 		{
-			//Метод Рузиля
-			var u = 3D * a * c - b * b;
-			var s = 2D * b * b * b - 9D * a * b * c + 27D * a * a * d;
+			//Уравнение решается общим методом Resolve. Прежде использовались формулы Кардано: проверка трёхкратного корня
+			//срабатывала и при двукратном (у (x + 1,5)²(x - 3) терялся корень 3), точное сравнение дискриминанта с нулём
+			//теряло двукратные корни из-за округления, а промежуточные величины переполнялись при коэффициентах порядка 1e52.
+			return new Polynomial(d, c, b, a).Resolve(multiple);
+		}
 
-			//Дискриминант Рузиля
-			// ReSharper disable once InconsistentNaming
-			var qSquare = 4D * u * u * u + s * s;
-
-			var divisor = 3D * a;
-
-			if (qSquare < 0D)
+		/// <summary>
+		/// Находит различные вещественные корни многочлена и их кратности.
+		/// </summary>
+		/// <param name="a">Коэффициенты многочлена степени не ниже первой, старший коэффициент не равен 0.</param>
+		/// <param name="roots">Список, в который добавляются различные корни в порядке возрастания.</param>
+		/// <param name="multiplicities">Список, в который добавляются кратности корней.</param>
+		private static void SolveReal(double[] a, List<double> roots, List<int> multiplicities)
+		{
+			if (a.Length == 2)
 			{
-				//Неприводимый случай
-
-				//var sQ = new Complex(0D, Sqrt(-Q));
-				//var alpha = ((sQ - s) / 2D).Pow(Third);// ^ Third;
-
-				var cplx = new Complex(-s / 2D, System.Math.Sqrt(-qSquare) / 2D);
-				var alpha = cplx.Pow(Third);
-
-				var r = -alpha.R;
-				var i = Sqrt3 * alpha.I;
-
-				//Три разных вещественных корня
-				return a > 0
-					? new[] { (r - i - b) / divisor, (r + i - b) / divisor, (2D * alpha.R - b) / divisor }
-					: new[] { (2D * alpha.R - b) / divisor, (r + i - b) / divisor, (r - i - b) / divisor };
+				roots.Add(-a[0] / a[1]);
+				multiplicities.Add(1);
+				return;
 			}
-			else
+
+			//Корни каждой производной разбивают прямую на промежутки монотонности предыдущего многочлена цепочки,
+			//поэтому корни вычисляются снизу вверх, начиная с квадратного трёхчлена, и каждая производная решается один раз.
+			var chain = new List<double[]> { a };
+			while (chain[chain.Count - 1].Length > 3)
 			{
-				var sQ = System.Math.Sqrt(qSquare);
+				chain.Add(Differentiate(chain[chain.Count - 1]));
+			}
 
-				var t1 = (-sQ - s) / 2D;
-				t1 = t1 >= 0D ? System.Math.Pow(t1, Third) : -System.Math.Pow(-t1, Third);
+			SolveQuadratic(chain[chain.Count - 1], roots, multiplicities);
 
-				if (!0D.Equals(qSquare))
+			for (var k = chain.Count - 2; k >= 0; k--)
+			{
+				//Критическая точка, вычисленная как бесконечность (возможно лишь при переполнении), не разбивает прямую.
+				var critical = new List<double>();
+				var criticalMultiplicities = new List<int>();
+				for (var i = 0; i < roots.Count; i++)
 				{
-					var t2 = (sQ - s) / 2D;
-					t2 = t2 >= 0D ? System.Math.Pow(t2, Third) : -System.Math.Pow(-t2, Third);
-
-					//Один вещественный и два комплексных сопряженных корня
-					return new[] { (t1 + t2 - b) / divisor };
+					if (!double.IsNaN(roots[i]) && !double.IsInfinity(roots[i]))
+					{
+						critical.Add(roots[i]);
+						criticalMultiplicities.Add(multiplicities[i]);
+					}
 				}
 
-				var x = (-b - t1) / divisor;
-
-				if (s.Equals(9D * a * u))
-				{
-					//Один трехкратный корень
-					return multiple ? new[] { x, x, x } : new[] { x };
-				}
-
-				//Один двухкратный и один однократный корень
-				if (t1 * a > 0D)
-				{
-					return multiple ? new[] { x, x, (2D * t1 - b) / divisor } : new[] { x, (2D * t1 - b) / divisor };
-				}
-
-				//Другой порядок тех же корней
-				return multiple ? new[] { (2D * t1 - b) / divisor, x, x } : new[] { (2D * t1 - b) / divisor, x };
+				roots.Clear();
+				multiplicities.Clear();
+				SolveByCriticalPoints(chain[k], critical.ToArray(), criticalMultiplicities.ToArray(), roots, multiplicities);
 			}
 		}
 
-		private static double[] ResolveCubicR(double a, double b, double c, double d, bool multiple = true)
+		/// <summary>
+		/// Находит вещественные корни квадратного трёхчлена <i>a₂x² + a₁x + a₀</i>.
+		/// </summary>
+		/// <param name="a">Коэффициенты трёхчлена, старший коэффициент не равен 0.</param>
+		/// <param name="roots">Список, в который добавляются различные корни в порядке возрастания.</param>
+		/// <param name="multiplicities">Список, в который добавляются кратности корней.</param>
+		private static void SolveQuadratic(double[] a, List<double> roots, List<int> multiplicities)
 		{
-			//Замена переменных
-			var dx = -b / (3D * a);
+			var c = a[0];
+			var b = a[1];
+			var major = a[2];
 
-			//Приведение к каноническому виду
-			var p = (3 * a * c - b * b) / (3 * a * a);
-			var q = (2 * b * b * b - 9 * a * b * c + 27 * a * a * d) / (27 * a * a * a);
+			var discriminant = b * b - 4D * major * c;
 
-			//Дискриминант
-			// ReSharper disable once InconsistentNaming
-			var Q = p * p * p / 27D + q * q / 4D;
+			//Дискриминант, равный нулю в пределах погрешности вычислений и представления коэффициентов, означает двукратный корень.
+			//Прежде дискриминант сравнивался с нулём точно, и двукратный корень терялся, когда округление делало его отрицательным
+			//(например, у x² - 0,42x + 0,0441). Порог совпадает с проверкой значения в вершине параболы в SolveByCriticalPoints.
+			var tolerance = 3D * MachineEpsilon * (3D * b * b + 4D * System.Math.Abs(major * c));
 
-			if (Q < 0)
+			if (discriminant < -tolerance)
 			{
-				//Неприводимый случай
-				var sQ = new Complex(0, Sqrt(-Q));
-				var alpha = (sQ - q / 2D).Pow(Third); // ^ Third;
-
-				var r = -alpha.R;
-				var i = Sqrt3 * alpha.I;
-
-				//Три разных вещественных корня
-				return new[] { r - i + dx, r + i + dx, 2 * alpha.R + dx };
+				return;
 			}
-			else
+
+			if (discriminant <= tolerance)
 			{
-				var sQ = Sqrt(Q);
+				roots.Add(-b / (2D * major));
+				multiplicities.Add(2);
+				return;
+			}
 
-				var t1 = -sQ - q / 2D;
-				t1 = t1 >= 0 ? System.Math.Pow(t1, Third) : -System.Math.Pow(-t1, Third);
+			//Устойчивая форма: q и корни q/a₂, a₀/q вычисляются без вычитания близких чисел. Прежде по школьной формуле
+			//малый корень x² - 1e8·x + 1 получался равным 7,45e-9 вместо 1e-8.
+			var sqrt = System.Math.Sqrt(discriminant);
+			var q = -0.5 * (b < 0D ? b - sqrt : b + sqrt);
+			var x1 = q / major;
+			var x2 = c / q;
 
+			roots.Add(System.Math.Min(x1, x2));
+			roots.Add(System.Math.Max(x1, x2));
+			multiplicities.Add(1);
+			multiplicities.Add(1);
+		}
 
-				if (!Q.Equals(0D))
+		/// <summary>
+		/// Находит вещественные корни многочлена по корням его производной (критическим точкам).
+		/// </summary>
+		/// <param name="a">Коэффициенты многочлена степени не ниже второй, старший коэффициент не равен 0.</param>
+		/// <param name="critical">Различные вещественные корни производной в порядке возрастания.</param>
+		/// <param name="criticalMultiplicities">Кратности корней производной.</param>
+		/// <param name="roots">Список, в который добавляются различные корни в порядке возрастания.</param>
+		/// <param name="multiplicities">Список, в который добавляются кратности корней.</param>
+		/// <remarks>
+		/// Между соседними критическими точками многочлен строго монотонен, поэтому на промежутке со строго разными знаками
+		/// на концах лежит ровно один простой корень, а на остальных промежутках корней нет. Критическая точка, значение
+		/// в которой не превышает погрешности вычислений, — кратный корень.
+		/// </remarks>
+		private static void SolveByCriticalPoints(double[] a, double[] critical, int[] criticalMultiplicities, List<double> roots, List<int> multiplicities)
+		{
+			var n = a.Length - 1;
+			var count = critical.Length;
+
+			var values = new double[count];
+			var zeros = new bool[count];
+			for (var j = 0; j < count; j++)
+			{
+				double derivative;
+				values[j] = Evaluate(a, critical[j], out derivative);
+
+				//Прежде кратные корни в критических точках пропускались: у (x - 1)²(x - 2)(x - 3)(x - 4) не находился корень 1.
+				zeros[j] = !double.IsInfinity(values[j]) && System.Math.Abs(values[j]) <= GetErrorBound(a, critical[j]);
+			}
+
+			var majorSign = Sign(a[n]);
+			var previousPosition = double.NegativeInfinity;
+			var previousSign = n % 2 == 0 ? majorSign : -majorSign;
+			var bound = 0D;
+
+			var index = 0;
+			while (true)
+			{
+				double position;
+				int sign;
+				var rootMultiplicity = 0;
+
+				if (index < count && zeros[index])
 				{
-					var t2 = sQ - q / 2D;
-					t2 = t2 >= 0 ? System.Math.Pow(t2, Third) : -System.Math.Pow(-t2, Third);
+					//Подряд идущие нулевые критические точки неразличимы в пределах погрешности: между ними многочлен монотонен,
+					//поэтому это один кратный корень. Его кратность на 1 больше суммарной кратности корней производной
+					//(так число корней не превышает степени), а положение — среднее с учётом кратностей.
+					var first = critical[index];
+					var offset = 0D;
+					var sum = 0;
 
-					//Один вещественный и два комплексных сопряженных корня
-					return new[] { t1 + t2 + dx };
-				}
-
-				if (p.Equals(q))
-				{
-					//Один трехкратный корень
-					var x = dx - t1;
-
-					if (multiple)
+					for (; index < count && zeros[index]; index++)
 					{
-						return new[] { x, x, x };
+						offset += (critical[index] - first) * criticalMultiplicities[index];
+						sum += criticalMultiplicities[index];
 					}
 
-					return new[] { x };
+					position = first + offset / sum;
+					sign = 0;
+					rootMultiplicity = sum + 1;
 				}
-					
-				//Два вещественных корня. Один из корней двухкратный
-				return new[] { 2 * t1 + dx, dx - t1 };
-			}
-		}
-
-		private static Complex[] ResolveTesseract(Complex a, Complex b, Complex c, Complex d, Complex e)
-		{
-			var p = (8 * a * c - 3 * b * b) / (8 * a * a);
-			var q = (8 * a * a * d + b * b * b - 4 * a * b * c) / (8 * a * a * a);
-			var r = (16 * a * b * b * c - 64 * a * a * b * d - 3 * b * b * b * b + 256 * a * a * a * e) / (256 * a * a * a * a);
-
-			var dx = -b / (4 * a);
-
-			if (q.Equals(Complex.Empty))
-			{
-				var resolve2 = ResolveSquare(1D, p / 2, (p * p - 4 * r) / 16);
-				return new[]
+				else if (index < count)
 				{
-					-resolve2[0].Pow(0.5D) - resolve2[1].Pow(0.5D) + dx,
-					resolve2[0].Pow(0.5D) - resolve2[1].Pow(0.5D) + dx,
-					-resolve2[0].Pow(0.5D) + resolve2[1].Pow(0.5D) + dx,
-					resolve2[0].Pow(0.5D) + resolve2[1].Pow(0.5D) + dx,
-				};
-			}
-
-			var resolve3 = ResolveCubic2(1D, p / 2, (p * p - 4 * r) / 16, -q * q / 64);
-			var z1 = resolve3[0].Pow(0.5D);
-			var z2 = resolve3[1].Pow(0.5D);
-			var z3 = resolve3[2].Pow(0.5D);
-
-			double sign = (z1 * z2 * z3 / q).R < 0 ? 1 : -1;
-
-			return new[]
-			{
-					sign*(z1 + z2 + z3) + dx,
-					sign*(z1 - z2 - z3) + dx,
-					sign*(-z1 + z2 - z3) + dx,
-					sign*(-z1 - z2 + z3) + dx,
-				};
-		}
-
-		private static Complex[] ResolveTesseract(double a, double b, double c, double d, double e)
-		{
-			var p = (8*a*c - 3*b*b)/(8*a*a);
-			var q = (8*a*a*d + b*b*b - 4*a*b*c)/(8*a*a*a);
-			var r = (16*a*b*b*c - 64*a*a*b*d - 3*b*b*b*b + 256*a*a*a*e)/(256*a*a*a*a);
-
-			var dx = -b/(4*a);
-
-			if (q.Equals(0D))
-			{
-				var resolve2 = ResolveSquare(1D, p/2, (p*p - 4*r)/16);
-				return new[]
+					position = critical[index];
+					sign = Sign(values[index]);
+					index++;
+				}
+				else
 				{
-					-resolve2[0].Pow(0.5D) - resolve2[1].Pow(0.5D) + dx,
-					resolve2[0].Pow(0.5D) - resolve2[1].Pow(0.5D) + dx,
-					-resolve2[0].Pow(0.5D) + resolve2[1].Pow(0.5D) + dx,
-					resolve2[0].Pow(0.5D) + resolve2[1].Pow(0.5D) + dx,
-				};
-			}
-			
-			var resolve3 = ResolveCubic2(1D, p/2, (p*p - 4*r)/16, -q*q/64);
-			var z1 = resolve3[0].Pow(0.5D);
-			var z2 = resolve3[1].Pow(0.5D);
-			var z3 = resolve3[2].Pow(0.5D);
-			double sign = (z1*z2*z3/q).R < 0 ? 1 : -1;
-			
-			/*
-			var resolve3 = ResolveCubicReal(1D, p / 2, (p * p - 4 * r) / 16, -q * q / 64);
-			var z1 = System.Math.Sqrt(resolve3[0]);
-			var z2 = System.Math.Sqrt(resolve3[1]);
-			var z3 = System.Math.Sqrt(resolve3[2]);
-			double sign = z1 * z2 * z3 / q < 0 ? 1 : -1;
-			*/
+					position = double.PositiveInfinity;
+					sign = majorSign;
+				}
 
-			return new []
-			{
-				sign*(z1 + z2 + z3) + dx,
-				sign*(z1 - z2 - z3) + dx,
-				sign*(-z1 + z2 - z3) + dx,
-				sign*(-z1 - z2 + z3) + dx,
-			};
+				//Знаки сравниваются без перемножения значений, чтобы не терять их при переполнении и потере значимости.
+				if (previousSign != 0 && sign != 0 && previousSign != sign)
+				{
+					if (bound.Equals(0D) && (double.IsInfinity(previousPosition) || double.IsInfinity(position)))
+					{
+						bound = GetRootBound(a);
+					}
+
+					roots.Add(FindRoot(a, previousPosition, position, previousSign, bound));
+					multiplicities.Add(1);
+				}
+
+				if (rootMultiplicity > 0)
+				{
+					roots.Add(position);
+					multiplicities.Add(rootMultiplicity);
+				}
+
+				if (double.IsPositiveInfinity(position))
+				{
+					return;
+				}
+
+				previousPosition = position;
+				previousSign = sign;
+			}
 		}
-		
-		private static double[] ResolveTesseractR(double a, double b, double c, double d, double e, bool multiple = true)
+
+		/// <summary>
+		/// Находит простой корень многочлена на промежутке монотонности, на концах которого многочлен имеет разные знаки.
+		/// </summary>
+		/// <param name="a">Коэффициенты многочлена.</param>
+		/// <param name="lo">Левый конец промежутка или минус бесконечность.</param>
+		/// <param name="hi">Правый конец промежутка или плюс бесконечность.</param>
+		/// <param name="loSign">Знак многочлена на левом конце промежутка.</param>
+		/// <param name="bound">Граница модулей корней многочлена; используется вместо бесконечного конца.</param>
+		/// <returns>Корень многочлена.</returns>
+		/// <remarks>
+		/// Гибрид метода Ньютона и бисекции (как rtsafe из Numerical Recipes): промежуток, содержащий корень, сохраняется
+		/// на каждом шаге, а шаг Ньютона заменяется бисекцией, если выходит за промежуток или сокращается медленнее,
+		/// чем вдвое за два шага. Прежде метод Ньютона не удерживал промежуток и останавливался, как только модуль
+		/// значения переставал убывать, поэтому для многочленов степени выше 4 возвращались точки, не являющиеся корнями.
+		/// </remarks>
+		private static double FindRoot(double[] a, double lo, double hi, int loSign, double bound)
 		{
-			var resolve = ResolveTesseract(a, b, c, d, e);
-			
-			var eps = 1E-12;
-			var result = new List<double>();
-
-			if (System.Math.Abs(resolve[0].I) < eps) result.Add(resolve[0].R);
-			if (System.Math.Abs(resolve[1].I) < eps) result.Add(resolve[1].R);
-			if (System.Math.Abs(resolve[2].I) < eps) result.Add(resolve[2].R);
-			if (System.Math.Abs(resolve[3].I) < eps) result.Add(resolve[3].R);
-
-			if (result.Count < 1)
+			//За границей модулей корней знак многочлена совпадает со знаком старшего члена.
+			if (double.IsNegativeInfinity(lo))
 			{
-				return EmptyArray;
+				lo = System.Math.Min(-2D * bound, hi - bound);
 			}
 
-			result.Sort();
-			return result.ToArray();
+			if (double.IsPositiveInfinity(hi))
+			{
+				hi = System.Math.Max(2D * bound, lo + bound);
+			}
 
-			//throw new NotImplementedException("Решение для уравнений " + 4 + " степени не реализовано");
+			var x = 0.5 * lo + 0.5 * hi;
+			var best = x;
+			var bestAbs = double.PositiveInfinity;
+			var step = hi - lo;
+			var previousStep = step;
+
+			for (var iteration = 0; iteration < MaxRootIterations; iteration++)
+			{
+				double derivative;
+				var value = Evaluate(a, x, out derivative);
+
+				var abs = System.Math.Abs(value);
+				if (abs <= bestAbs)
+				{
+					best = x;
+					bestAbs = abs;
+				}
+
+				if (value.Equals(0D))
+				{
+					break;
+				}
+
+				if (Sign(value) == loSign)
+				{
+					lo = x;
+				}
+				else
+				{
+					hi = x;
+				}
+
+				var newton = x - value / derivative;
+
+				//Шаг Ньютона меньше точности представления: корень найден.
+				if (newton.Equals(x))
+				{
+					break;
+				}
+
+				var next = newton > lo && newton < hi && 2D * System.Math.Abs(newton - x) <= System.Math.Abs(previousStep)
+					? newton
+					: 0.5 * lo + 0.5 * hi;
+
+				//Промежуток сжался до соседних чисел двойной точности.
+				if (!(next > lo && next < hi))
+				{
+					break;
+				}
+
+				previousStep = step;
+				step = next - x;
+				x = next;
+			}
+
+			return best;
+		}
+
+		/// <summary>
+		/// Возвращает коэффициенты производной многочлена, нормированные функцией <see cref="Normalize"/>.
+		/// </summary>
+		/// <param name="a">Коэффициенты многочлена.</param>
+		/// <returns>Коэффициенты производной.</returns>
+		private static double[] Differentiate(double[] a)
+		{
+			var result = new double[a.Length - 1];
+			for (var i = 1; i < a.Length; i++)
+			{
+				result[i - 1] = i * a[i];
+			}
+
+			Normalize(result);
+			return result;
+		}
+
+		/// <summary>
+		/// Умножает коэффициенты многочлена на степень двойки так, чтобы наибольший из них по модулю был порядка 1.
+		/// </summary>
+		/// <param name="a">Коэффициенты многочлена.</param>
+		/// <remarks>
+		/// Умножение на степень двойки выполняется точно и не меняет корней, но исключает переполнение и потерю значимости
+		/// в промежуточных вычислениях: прежде у 1e52·(x - 1)(x - 2)(x - 3) получались корни -∞, NaN и ∞.
+		/// </remarks>
+		private static void Normalize(double[] a)
+		{
+			var max = 0D;
+			foreach (var coefficient in a)
+			{
+				max = System.Math.Max(max, System.Math.Abs(coefficient));
+			}
+
+			if (!(max > 0D) || double.IsInfinity(max))
+			{
+				return;
+			}
+
+			var exponent = -GetExponent(max);
+			for (var i = 0; i < a.Length; i++)
+			{
+				a[i] = ScaleByPowerOfTwo(a[i], exponent);
+			}
+		}
+
+		/// <summary>
+		/// Выполняет замену переменной <i>x</i> = 2<sup><i>k</i></sup><i>y</i>, после которой модули корней в среднем близки к 1,
+		/// и нормирует коэффициенты многочлена от <i>y</i>.
+		/// </summary>
+		/// <param name="a">Коэффициенты многочлена; старший и свободный коэффициенты не равны 0.</param>
+		/// <returns>Показатель <i>k</i>: корни исходного многочлена в 2<sup><i>k</i></sup> раз больше корней нового.</returns>
+		/// <remarks>
+		/// Среднее геометрическое модулей корней равно |a₀/aₙ|^(1/n), поэтому после замены старший и свободный коэффициенты
+		/// одного порядка и ни один из них не теряется при нормировке, даже если исходные коэффициенты различаются
+		/// на сотни порядков (например, у 1e-300·x³ - 1e300). Умножения на степени двойки выполняются точно, а показатели
+		/// вычисляются по двоичным порядкам коэффициентов, поэтому умножение многочлена на степень двойки не меняет корней даже в последнем бите.
+		/// </remarks>
+		private static int Balance(double[] a)
+		{
+			var n = a.Length - 1;
+			var k = (int)System.Math.Round((double)(GetExponent(a[0]) - GetExponent(a[n])) / n);
+
+			var shift = int.MinValue;
+			for (var i = 0; i <= n; i++)
+			{
+				if (!a[i].Equals(0D))
+				{
+					shift = System.Math.Max(shift, GetExponent(a[i]) + k * i);
+				}
+			}
+
+			for (var i = 0; i <= n; i++)
+			{
+				a[i] = ScaleByPowerOfTwo(a[i], k * i - shift);
+			}
+
+			return k;
+		}
+
+		/// <summary>
+		/// Возвращает двоичный порядок числа, то есть целую часть log₂|<paramref name="x"/>|, вычисленную точно по двоичному представлению.
+		/// </summary>
+		/// <param name="x">Конечное число, не равное 0.</param>
+		/// <returns>Двоичный порядок числа.</returns>
+		private static int GetExponent(double x)
+		{
+			var exponent = (int)((BitConverter.DoubleToInt64Bits(x) >> 52) & 0x7FF);
+
+			//Денормализованное число после умножения на 2⁵⁴ становится нормализованным.
+			return exponent == 0 ? GetExponent(x * 18014398509481984D) - 54 : exponent - 1023;
+		}
+
+		/// <summary>
+		/// Умножает число на 2<sup><paramref name="exponent"/></sup>.
+		/// </summary>
+		/// <param name="value">Исходное число.</param>
+		/// <param name="exponent">Показатель степени двойки.</param>
+		/// <returns>Произведение, вычисленное точно, если оно не выходит за пределы нормализованных чисел двойной точности.</returns>
+		private static double ScaleByPowerOfTwo(double value, int exponent)
+		{
+			//Множитель 2^exponent может не поместиться в double, поэтому умножение выполняется по частям,
+			//каждая из которых — точное число 2^part, собранное из двоичного представления.
+			while (exponent != 0)
+			{
+				var part = System.Math.Max(-1000, System.Math.Min(1000, exponent));
+				value *= BitConverter.Int64BitsToDouble((long)(part + 1023) << 52);
+				exponent -= part;
+			}
+
+			return value;
+		}
+
+		/// <summary>
+		/// Вычисляет по схеме Горнера значение многочлена и его производной.
+		/// </summary>
+		/// <param name="a">Коэффициенты многочлена.</param>
+		/// <param name="x">Значение аргумента.</param>
+		/// <param name="derivative">Значение производной.</param>
+		/// <returns>Значение многочлена.</returns>
+		private static double Evaluate(double[] a, double x, out double derivative)
+		{
+			var n = a.Length - 1;
+			var value = a[n];
+			derivative = 0D;
+
+			for (var i = n - 1; i >= 0; i--)
+			{
+				derivative = derivative * x + value;
+				value = value * x + a[i];
+
+				if (double.IsInfinity(value))
+				{
+					//При переполнении знак значения определяется старшими членами, как в методе GetValue.
+					derivative = double.NaN;
+					return i % 2 == 0 ? value : value * Sign(x);
+				}
+			}
+
+			return value;
+		}
+
+		/// <summary>
+		/// Возвращает оценку погрешности значения многочлена, вычисленного по схеме Горнера, с учётом погрешности
+		/// представления коэффициентов: <i>(n + 1)·ε·Σ|aᵢ||x|ⁱ</i>.
+		/// </summary>
+		/// <param name="a">Коэффициенты многочлена.</param>
+		/// <param name="x">Значение аргумента.</param>
+		/// <returns>Оценка погрешности значения многочлена.</returns>
+		private static double GetErrorBound(double[] a, double x)
+		{
+			var n = a.Length - 1;
+			var abs = System.Math.Abs(x);
+			var sum = System.Math.Abs(a[n]);
+
+			for (var i = n - 1; i >= 0; i--)
+			{
+				sum = sum * abs + System.Math.Abs(a[i]);
+			}
+
+			return (n + 1) * MachineEpsilon * sum;
+		}
+
+		/// <summary>
+		/// Возвращает степень двойки, не меньшую границы модулей корней многочлена по Фудзиваре:
+		/// <i>2·max(|aᵢ/aₙ|^(1/(n - i)), |a₀/(2aₙ)|^(1/n))</i>.
+		/// </summary>
+		/// <param name="a">Коэффициенты многочлена.</param>
+		/// <returns>Положительное число, не меньшее модуля любого корня.</returns>
+		private static double GetRootBound(double[] a)
+		{
+			var n = a.Length - 1;
+			var major = GetExponent(a[n]);
+			var max = int.MinValue;
+
+			//Отношения коэффициентов оцениваются сверху по их двоичным порядкам: |aᵢ/aₙ| < 2^(eᵢ + 1 - eₙ).
+			//Это исключает переполнение, а граница точно масштабируется вместе с коэффициентами.
+			for (var i = 0; i < n; i++)
+			{
+				if (a[i].Equals(0D))
+				{
+					continue;
+				}
+
+				var exponent = GetExponent(a[i]) + 1 - major - (i == 0 ? 1 : 0);
+				max = System.Math.Max(max, (int)System.Math.Ceiling((double)exponent / (n - i)));
+			}
+
+			return ScaleByPowerOfTwo(2D, System.Math.Max(-1070, System.Math.Min(1020, max)));
 		}
 
 		#endregion
@@ -1176,212 +1331,88 @@ namespace Ruzil3D.Algebra
 		private static readonly double[] EmptyArray = new double[0];
 
 		/// <summary>
-		/// Метод Ньютона для нахождения корней многочлена.
+		/// Возвращает вещественные корни многочлена в массиве структур <see cref="double"/>, упорядоченные по возрастанию.
 		/// </summary>
-		/// <param name="polynom">Исходный многочлен.</param>
-		/// <param name="a">Начало области монотонности.</param>
-		/// <param name="b">Конец области монотонности.</param>
-		/// <param name="derivative">Производная многочлена.</param>
-		/// <returns>Возвращает корень многочлена, на отрезке [<paramref name="a"/>, <paramref name="b"/>] если существует. <see cref="double.NaN"/> - в противном случае.</returns>
-		private static double FindRoot(Polynomial polynom, double a, double b, Polynomial derivative = null)
-		{
-			//Проверка начальных условий
-			if (double.IsNaN(a) || double.IsNaN(b)) return double.NaN;
-			if (a > b) return double.NaN;
-			var aValue = polynom.GetValue(a);
-			if (aValue.Equals(0D)) return a;
-			if (a.Equals(b)) return double.NaN;
-			var bValue = polynom.GetValue(b);
-			if (bValue.Equals(0D)) return b;
-			if (aValue * bValue > 0) return double.NaN;
-
-			/*
-			const double eps = 1E-12;
-			if (aValue > eps && bValue > eps || aValue < -eps && bValue < -eps)
-			{
-				return double.NaN;
-			}
-			*/
-
-			double x;
-
-			if (a.Equals(double.NegativeInfinity))
-			{
-				x = System.Math.Min(1, b) - 1;
-			}
-			else if (b.Equals(double.PositiveInfinity))
-			{
-				x = System.Math.Max(-1, a) + 1;
-			}
-			else
-			{
-				x = (a + b)/2D;
-			}
-
-			var y = polynom.GetValue(x);
-			var abs = System.Math.Abs(y);
-
-			derivative = derivative ?? polynom.GetDerivative();
-
-			//Итерации продолжаются, пока модуль значения строго убывает. Сравнение записано через отрицание,
-			//чтобы NaN (например, 0/0 в кратном корне) останавливал поиск: сравнение с NaN всегда ложно,
-			//и прежнее условие absNext >= abs приводило к бесконечному циклу.
-			const int maxIterations = 10000;
-			for (var i = 0; i < maxIterations; i++)
-			{
-				var xNext = x - y / derivative.GetValue(x);
-				var yNext = polynom.GetValue(xNext);
-				var absNext = System.Math.Abs(yNext);
-
-				if (!(absNext < abs))
-				{
-					return x;
-				}
-
-				x = xNext;
-				y = yNext;
-				abs = absNext;
-			}
-
-			return x;
-		}
-
-
-
-		/// <summary>
-		/// Возвращает вещественные корни многочлена в массиве структур <see cref="double"/>.
-		/// </summary>
-		/// <param name="multiple">Параметр указывающий на необходимость учитывать кратность корней.</param>
-		/// <returns>Корни многочлена</returns>
-		/// <exception cref="NotImplementedException">Решение для уравнений соответствующей степени не реализовано.</exception>
+		/// <param name="multiple">Параметр указывающий на необходимость учитывать кратность корней: если <b>true</b>, кратный корень повторяется столько раз, какова его кратность; если <b>false</b>, возвращаются только различные корни.</param>
+		/// <returns>Корни многочлена. Для многочлена нулевой степени, в том числе нулевого, и для многочлена с коэффициентами <see cref="double.NaN"/> или бесконечностью возвращается пустой массив.</returns>
+		/// <remarks>
+		/// Корни ищутся на промежутках монотонности, которые задают корни производной, найденные тем же методом.
+		/// На промежутке с разными знаками на концах простой корень уточняется гибридом метода Ньютона и бисекции,
+		/// а критическая точка, значение в которой не превышает погрешности вычислений, считается кратным корнем.
+		/// Поэтому корни, неразличимые в пределах точности чисел двойной точности, возвращаются как один кратный корень.
+		/// Умножение многочлена на число не меняет результата, если коэффициенты при этом не округляются (например, при умножении на степень двойки).
+		/// </remarks>
 		public double[] Resolve(bool multiple = true)
 		{
-			switch (Degree)
+			var degree = Degree;
+
+			for (var i = 0; i <= degree; i++)
 			{
-				case 0:
+				if (double.IsNaN(A[i]) || double.IsInfinity(A[i]))
+				{
 					return EmptyArray;
-
-				case 1:
-					return new[] {-A[0]/A[1]};
-
-				case 2:
-					return ResolveSquareReal(A[2], A[1], A[0], multiple);
-
-				case 3:
-					return ResolveCubicReal(A[3], A[2], A[1], A[0], multiple);
-
-				case 4:
-					//todo Метод нужно протестировать
-					return ResolveTesseractR(A[4], A[3], A[2], A[1], A[0], multiple);
+				}
 			}
 
-			//Корни производных вычисляются снизу вверх, и каждая производная решается один раз.
-			//Прежде каждый уровень заново решал обе свои производные, и время росло экспоненциально со степенью.
-			var chain = new List<Polynomial> { this };
-			while (chain[chain.Count - 1].Degree > 3)
+			var roots = new List<double>();
+			var multiplicities = new List<int>();
+
+			if (degree > 0)
 			{
-				chain.Add(chain[chain.Count - 1].GetDerivative());
+				//Нулевые младшие коэффициенты дают точный корень 0 соответствующей кратности:
+				//прежде x⁵.Resolve() возвращал восемь «корней» -0 и 0.
+				var zeros = 0;
+				while (A[zeros].Equals(0D))
+				{
+					zeros++;
+				}
+
+				if (zeros < degree)
+				{
+					var a = new double[degree - zeros + 1];
+					Array.Copy(A, zeros, a, 0, a.Length);
+
+					var exponent = Balance(a);
+					SolveReal(a, roots, multiplicities);
+
+					for (var i = 0; i < roots.Count; i++)
+					{
+						roots[i] = ScaleByPowerOfTwo(roots[i], exponent);
+					}
+				}
+
+				if (zeros > 0)
+				{
+					var index = 0;
+					while (index < roots.Count && roots[index] < 0D)
+					{
+						index++;
+					}
+
+					roots.Insert(index, 0D);
+					multiplicities.Insert(index, zeros);
+				}
 			}
-
-			var roots = new double[chain.Count][];
-			for (var k = chain.Count - 1; k > 0; k--)
-			{
-				var polynom = chain[k];
-				roots[k] = polynom.Degree <= 4
-					? polynom.Resolve()
-					: polynom.Resolve(true, chain[k + 1], roots[k + 1], roots[k + 2]);
-			}
-
-			return Resolve(multiple, chain[1], roots[1], roots[2]);
-		}
-
-		/// <summary>
-		/// Находит вещественные корни многочлена методом Ньютона между его критическими точками и точками перегиба.
-		/// </summary>
-		/// <param name="multiple">Параметр указывающий на необходимость учитывать кратность корней.</param>
-		/// <param name="derivative1">Первая производная многочлена.</param>
-		/// <param name="roots1">Корни первой производной (критические точки).</param>
-		/// <param name="roots2">Корни второй производной (точки перегиба).</param>
-		/// <returns>Корни многочлена</returns>
-		private double[] Resolve(bool multiple, Polynomial derivative1, double[] roots1, double[] roots2)
-		{
-			//Находим критические точки и точки перегиба функции.
-			//NaN (например, после переполнения в формулах для производных) о них ничего не говорит и пропускается.
-			var list = new List<double> { double.NegativeInfinity, double.PositiveInfinity };
-			list.AddRange(roots1.Where(root => !double.IsNaN(root)));
-			list.AddRange(roots2.Where(root => !double.IsNaN(root)));
-			list.Sort();
 
 			var result = new List<double>();
-
-			for (var i = 1; i < list.Count; i++)
+			for (var i = 0; i < roots.Count; i++)
 			{
-				var a = list[i - 1];
-				var b = list[i];
+				//Прибавление нуля заменяет -0 на 0.
+				var root = roots[i] + 0D;
 
-				//Ищем решение уравнения методом Ньютона между критическими точками и точками перегиба.
-				var root = FindRoot(this, a, b, derivative1);
-				
-				if (double.IsNaN(root))
+				//Различные корни, совпавшие после обратной замены переменной (при переполнении или потере значимости), объединяются.
+				if (!multiple && result.Count > 0 && result[result.Count - 1].Equals(root))
 				{
 					continue;
 				}
 
-				result.Add(root);
-
-
-				/*
-				double[] rem;
-				var pol = Div(A, new[] { -root, 1 }, Degree, 1, out rem);
-				result.AddRange(pol.Resolve());
-				result.Sort();
-				break;
-				*/
-
-				if (root.Equals(b))
+				for (var k = multiple ? multiplicities[i] : 1; k > 0; k--)
 				{
-					if (multiple && roots1.Contains(b))
-					{
-						result.Add(root);
-					}
-
-					i++;
+					result.Add(root);
 				}
 			}
 
-			return result.ToArray();
-		}
-
-		/// <summary>
-		/// Возвращает значение многочлена от числа двойной точности с плавающей запятой.
-		/// </summary>
-		/// <param name="x">Значение аргумента.</param>
-		/// <returns>Значение многочлена.</returns>
-		private double GetValue_OBSOLETE(double x)
-		{
-			if (double.IsNaN(x))
-			{
-				return double.NaN;
-			}
-
-			var result = 0D;
-			var powX = 1D;
-			foreach (var coef in A)
-			{
-				result += powX * coef;
-				powX *= x;
-			}
-
-			if (double.IsNaN(result))
-			{
-				//if (Degree)
-
-
-				//return x*Major > 0 ? double.PositiveInfinity : double.NegativeInfinity;
-			}
-
-
-			return result;
+			return result.Count == 0 ? EmptyArray : result.ToArray();
 		}
 
 		/*
@@ -1553,54 +1584,6 @@ namespace Ruzil3D.Algebra
 			return result;
 		}
 
-		/*
-        private static Polynomial Multiply(Polynomial p0, Polynomial p1, Polynomial p2)
-        {
-            var deg = p0.A.Length + p1.A.Length + p2.A.Length - 3;
-
-            var result = new double[deg + 1];
-
-            for (var i = 0; i < p0.A.Length; i++)
-                for (var j = 0; j < p1.A.Length; j++)
-                    for (var k = 0; k < p2.A.Length; k++)
-                    {
-                        result[i + j + k] += p0.A[i] * p1.A[j] * p2.A[k];
-                    }
-
-            return new Polynomial { A = result };
-        }
-
-
-        private static Polynomial Square(Polynomial polynomial)
-        {
-            var deg = polynomial.A.Length*2 - 2;
-
-            var result = new double[deg + 1];
-
-            for (var i = 0; i < polynomial.A.Length; i++)
-                for (var j = 0; j < polynomial.A.Length; j++)
-                    {
-                        result[i + j] += polynomial.A[i] * polynomial.A[j];
-                    }
-
-            return new Polynomial { A = result };
-        }
-        */
-
-		private static double[] Multiply(double[] x, double[] y)
-		{
-			var deg = x.Length + y.Length - 2;
-
-			var result = new double[deg + 1];
-			for (var i = 0; i < x.Length; i++)
-				for (var j = 0; j < y.Length; j++)
-				{
-					result[i + j] += x[i] * y[j];
-				}
-
-			return result;
-		}
-
 		/// <summary>
 		/// Возвращает исходный многочлен, возведенный в степень, заданную 32-битовым целым числом со знаком.
 		/// </summary>
@@ -1646,127 +1629,8 @@ namespace Ruzil3D.Algebra
 						pow *= pow;
 					}
 					return result;
-
-
-					/*
-			    var pow = A;
-			    double[] result = null;
-			    while (true)
-			    {
-				if ((y & 1) != 0)
-				{
-				    result = result == null ? pow : Multiply(result, pow);
-				}
-
-				y >>= 1;
-				if (y == 0) break;
-				pow = Multiply(pow, pow);
-			    }
-			    return new Polynomial { A = result };
-			    */
-
-
-
 			}
-
-			/*
-			*/
-
 		}
-
-		#region Limit
-
-		//Не реализовано
-		private static double GetLimitValue(Polynomial numerator, Polynomial denominator, double limit,
-			ELimitSide side = ELimitSide.Both)
-		{
-			//Если числитель нулевой
-			if (numerator == Empty)
-			{
-				//Либо нет придела либо 0
-				return denominator == Empty ? double.NaN : 0;
-			}
-
-			//Если придел на бесконечности
-			if (double.IsInfinity(limit))
-			{
-				var numDeg = numerator.Degree;
-				var denDeg = denominator.Degree;
-
-				if (numDeg > denDeg)
-				{
-					return System.Math.Pow(limit, numDeg - denDeg) * numerator[numDeg] / denominator[denDeg];
-				}
-
-				if (numDeg == denDeg)
-				{
-					return numerator[numDeg] / denominator[denDeg];
-				}
-
-				return 0;
-			}
-
-			var pol = new Polynomial(limit, 1);
-			numerator = numerator.Substitution(pol);
-			denominator = denominator.Substitution(pol);
-
-
-
-
-			var numValue = numerator.GetValue(limit);
-			var denValue = denominator.GetValue(limit);
-
-			if (!denValue.Equals(0D))
-			{
-				return numValue / denValue;
-			}
-
-			if (IsEmpty(denominator))
-			{
-
-			}
-
-			//todo Не реализовано
-			return 111111111111;
-
-			var numCounter = 0;
-
-			while (!IsEmpty(numerator) && !IsEmpty(denominator) && numerator.GetValue(limit).Equals(0) &&
-			       denominator.GetValue(limit).Equals(0))
-			{
-				numerator /= pol;
-				denominator /= pol;
-			}
-
-
-			do
-			{
-
-				if (!denValue.Equals(0))
-				{
-					return numValue / denValue;
-				}
-
-				if (!numValue.Equals(0))
-				{
-
-				}
-
-
-				//Polynomial.DivRem(numerator, pol);
-
-				if (!numValue.Equals(0))
-				{
-					//Плюс или минус бесконечность (неопределенность)
-					return double.NaN;
-				}
-
-				numerator /= pol;
-				denominator /= pol;
-			} while (true);
-		}
-
-		#endregion
 
 		#endregion
 
@@ -1958,7 +1822,6 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Получает строковое представление разложения многочлена с выделением старшего коэффициента и если метод <see cref="Resolve(bool)"/> находит корни, то расскладывает на линейные множители.
 		/// </summary>
-		/// <exception cref="NotImplementedException">Решение многочленов заданной степени не реализовано.</exception>
 		public string ResolveString
 		{
 			get
@@ -1966,18 +1829,13 @@ namespace Ruzil3D.Algebra
 				var result = "";
 
 				var rem = this / Major;
-				try
+
+				//Метод Resolve решает уравнения любой степени, поэтому прежний перехват NotImplementedException не нужен.
+				foreach (var x in Resolve())
 				{
-					var resolve = Resolve();
-					foreach (var x in resolve)
-					{
-						var part = GetPolynomialByRoots(x);
-						rem /= part;
-						result += "(" + part + ")" + CStatic.NarrowNbSp;
-					}
-				}
-				catch (NotImplementedException)
-				{
+					var part = GetPolynomialByRoots(x);
+					rem /= part;
+					result += "(" + part + ")" + CStatic.NarrowNbSp;
 				}
 
 				if (rem.Degree > 0)

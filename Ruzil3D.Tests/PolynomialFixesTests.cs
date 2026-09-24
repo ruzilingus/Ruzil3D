@@ -14,6 +14,227 @@ namespace Ruzil3D.Tests
 	/// </summary>
 	public class PolynomialFixesTests
 	{
+		#region Resolve
+
+		[Fact]
+		public void Resolve_Quintic_ReturnsOnlyRoots()
+		{
+			// Прежде метод Ньютона между критическими точками возвращал точки, не являющиеся корнями, и пропускал корни:
+			// у (x + 10)(x + 1)x(x - 1)(x - 2) первым «корнем» было -8,93 (значение многочлена 8220).
+			AssertRoots(new[] {-10D, -1, 0, 1, 2}, Polynomial.GetPolynomialByRoots(-10, -1, 0, 1, 2).Resolve(), 1e-12);
+			AssertRoots(new[] {0.1, 0.2, 0.3, 0.4, 0.5}, Polynomial.GetPolynomialByRoots(0.1, 0.2, 0.3, 0.4, 0.5).Resolve(), 1e-12);
+		}
+
+		[Fact]
+		public void Resolve_RandomIntegerRoots_AllFound()
+		{
+			// Прежде для многочленов пятой степени с различными целыми корнями из [-20, 20] ответ был неверен в 255 случаях из 308.
+			var random = new Random(20260924);
+			for (var degree = 3; degree <= 8; degree++)
+			{
+				for (var trial = 0; trial < 200; trial++)
+				{
+					var roots = Enumerable.Range(-100, 201).OrderBy(i => random.Next()).Take(degree)
+						.Select(i => (double) i).OrderBy(root => root).ToArray();
+
+					AssertRoots(roots, Polynomial.GetPolynomialByRoots(roots).Resolve(), 1e-6);
+				}
+			}
+		}
+
+		[Fact]
+		public void Resolve_RandomRepeatedRoots_CountsMultiplicity()
+		{
+			// Прежде кратные корни в критических точках пропускались или повторялись неверное число раз.
+			var random = new Random(777);
+			for (var degree = 2; degree <= 8; degree++)
+			{
+				for (var trial = 0; trial < 300; trial++)
+				{
+					var roots = Enumerable.Range(0, degree).Select(i => (double) random.Next(-6, 7)).OrderBy(root => root).ToArray();
+					var polynomial = Polynomial.GetPolynomialByRoots(roots);
+
+					AssertRoots(roots, polynomial.Resolve(), 1e-6);
+					AssertRoots(roots.Distinct().ToArray(), polynomial.Resolve(false), 1e-6);
+				}
+			}
+		}
+
+		[Fact]
+		public void Resolve_ChebyshevPolynomial()
+		{
+			var expected = Enumerable.Range(1, 10).Select(k => System.Math.Cos((2*k - 1)*System.Math.PI/20)).OrderBy(x => x).ToArray();
+
+			// Прежде у многочлена с корнями T₁₀ находился посторонний корень -0,3273, а три корня терялись.
+			AssertRoots(expected, Polynomial.GetPolynomialByRoots(expected).Resolve(), 1e-13);
+
+			// Многочлен Чебышёва с точными целыми коэффициентами из рекуррентного соотношения.
+			var previous = Polynomial.Identity;
+			var chebyshev = Polynomial.Up;
+			for (var n = 2; n <= 10; n++)
+			{
+				var next = 2*Polynomial.Up*chebyshev - previous;
+				previous = chebyshev;
+				chebyshev = next;
+			}
+
+			AssertRoots(expected, chebyshev.Resolve(), 1e-13);
+		}
+
+		[Fact]
+		public void Resolve_MultipleRoots()
+		{
+			// Прежде x⁵ давал восемь «корней», а Resolve(false) — четыре нуля; у (x - 1)⁴ параметр multiple не учитывался;
+			// двукратный корень в критической точке (x - 1)²(x - 2)(x - 3)(x - 4) пропускался (получалось [2, 3, 4]).
+			var monomial = Polynomial.GetPolynomial(5);
+			Assert.Equal(new[] {0D, 0, 0, 0, 0}, monomial.Resolve());
+			Assert.Equal(new[] {0D}, monomial.Resolve(false));
+
+			var quadruple = Polynomial.GetPolynomialByRoots(1, 1, 1, 1);
+			Assert.Equal(new[] {1D, 1, 1, 1}, quadruple.Resolve());
+			Assert.Equal(new[] {1D}, quadruple.Resolve(false));
+
+			var polynomial = Polynomial.GetPolynomialByRoots(1, 1, 2, 3, 4);
+			AssertRoots(new[] {1D, 1, 2, 3, 4}, polynomial.Resolve(), 1e-9);
+			AssertRoots(new[] {1D, 2, 3, 4}, polynomial.Resolve(false), 1e-9);
+
+			AssertRoots(new[] {1D, 1, 1, 2, 2, 2}, Polynomial.GetPolynomialByRoots(1, 1, 1, 2, 2, 2).Resolve(), 1e-9);
+		}
+
+		[Fact]
+		public void Resolve_QuadraticDoubleRoot_WithRoundedDiscriminant()
+		{
+			// Прежде дискриминант сравнивался с нулём точно, и двукратный корень терялся, когда после округления коэффициентов
+			// дискриминант становился отрицательным: у x² - 0,42x + 0,0441 не было корней (так терялась пятая часть случаев).
+			AssertRoots(new[] {0.21, 0.21}, new Polynomial(0.0441, -0.42, 1).Resolve(), 1e-12);
+
+			for (var k = 1; k < 1000; k++)
+			{
+				var root = k/1000m;
+				var expected = new[] {(double) root, (double) root};
+
+				AssertRoots(expected, new Polynomial(Parse(root*root), Parse(-2*root), 1).Resolve(), 1e-7);
+				AssertRoots(expected, new Polynomial(Parse(3*root*root), Parse(-6*root), 3).Resolve(), 1e-7);
+			}
+		}
+
+		[Fact]
+		public void Resolve_QuadraticWithoutCancellation()
+		{
+			// Прежде по школьной формуле малый корень x² - 1e8·x + 1 получался равным 7,45e-9 вместо 1e-8,
+			// а у 1e-10·x² + x + 1e-6 — равным -1,11e-6 вместо -1e-6.
+			var roots = new Polynomial(1, -1e8, 1).Resolve();
+			Assert.Equal(2, roots.Length);
+			Assert.InRange(roots[0], 1e-8*(1 - 1e-15), 1e-8*(1 + 1e-15));
+			Assert.InRange(roots[1], 1e8*(1 - 1e-15), 1e8*(1 + 1e-15));
+
+			roots = new Polynomial(1e-6, 1, 1e-10).Resolve();
+			Assert.Equal(2, roots.Length);
+			Assert.InRange(roots[0], -1e10*(1 + 1e-15), -1e10*(1 - 1e-15));
+			Assert.InRange(roots[1], -1e-6*(1 + 1e-15), -1e-6*(1 - 1e-15));
+
+			Assert.Equal(new[] {1D, 2D}, new Polynomial(2, -3, 1).Resolve());
+		}
+
+		[Fact]
+		public void Resolve_CubicSpecialCases()
+		{
+			// Прежде проверка трёхкратного корня срабатывала и при двукратном: у (x + 1,5)²(x - 3) терялся корень 3.
+			AssertRoots(new[] {-1.5, -1.5, 3}, new Polynomial(-6.75, -6.75, 0, 1).Resolve(), 1e-12);
+
+			// Прежде точное сравнение с нулём теряло двукратный корень: получался один корень -7,79000000000002.
+			AssertRoots(new[] {-7.79, -5.03, -5.03}, Polynomial.GetPolynomialByRoots(-5.03, -5.03, -7.79).Resolve(), 1e-9);
+
+			// Прежде промежуточные величины переполнялись ([-∞, NaN, ∞]) или теряли точность ([1,99998, 2,00001, 2,00001]).
+			AssertRoots(new[] {1D, 2, 3}, (Polynomial.GetPolynomialByRoots(1, 2, 3)*1e52).Resolve(), 1e-12);
+			AssertRoots(new[] {1D, 2, 3}, (Polynomial.GetPolynomialByRoots(1, 2, 3)*1e-55).Resolve(), 1e-12);
+
+			// Прежде относительная погрешность корня достигала 1,7e-8.
+			AssertRoots(new[] {-103.538807421030535115268918}, new Polynomial(1.11e6, 1/3D, 0, 1).Resolve(), 1e-14);
+		}
+
+		[Fact]
+		public void Resolve_RandomCubicsWithDoubleRoot()
+		{
+			// Прежде двукратный корень терялся почти в половине случаев (906 из 1919).
+			var random = new Random(503);
+			for (var trial = 0; trial < 500; trial++)
+			{
+				var doubleRoot = System.Math.Round(random.NextDouble()*20 - 10, 2);
+				var simpleRoot = System.Math.Round(random.NextDouble()*20 - 10, 2);
+				if (System.Math.Abs(doubleRoot - simpleRoot) < 0.1)
+				{
+					continue;
+				}
+
+				var expected = new[] {doubleRoot, doubleRoot, simpleRoot}.OrderBy(root => root).ToArray();
+
+				AssertRoots(expected, Polynomial.GetPolynomialByRoots(doubleRoot, doubleRoot, simpleRoot).Resolve(), 1e-6);
+			}
+		}
+
+		[Fact]
+		public void Resolve_QuarticSpecialCases()
+		{
+			// Прежде у этих многочленов не находилось ни одного корня.
+			AssertRoots(new[] {0.1, 0.2, 0.3, 0.4}, Polynomial.GetPolynomialByRoots(0.1, 0.2, 0.3, 0.4).Resolve(), 1e-12);
+			AssertRoots(new[] {1000D, 2100, 3050, 4500}, Polynomial.GetPolynomialByRoots(1000, 2100, 3050, 4500).Resolve(), 1e-12);
+			AssertRoots(new[] {1D, 2, 3, 4}, (Polynomial.GetPolynomialByRoots(1, 2, 3, 4)*1e-30).Resolve(), 1e-12);
+		}
+
+		[Fact]
+		public void Resolve_RandomQuartics()
+		{
+			// Прежде для корней из [-1000, 1000] корни терялись в 238 случаях из 827: биквадратная ветвь требовала точного q = 0,
+			// а абсолютный порог 1e-12 для мнимой части отбрасывал вещественные корни.
+			var random = new Random(4242);
+			for (var trial = 0; trial < 500; trial++)
+			{
+				var roots = Enumerable.Range(0, 4).Select(i => System.Math.Round(random.NextDouble()*2000 - 1000, 2)).OrderBy(root => root).ToArray();
+				if (roots.Zip(roots.Skip(1), (a, b) => b - a).Min() < 1)
+				{
+					continue;
+				}
+
+				AssertRoots(roots, Polynomial.GetPolynomialByRoots(roots).Resolve(), 1e-6);
+			}
+		}
+
+		[Fact]
+		public void Resolve_ScaledPolynomial_SameRoots()
+		{
+			// Прежде при умножении многочлена на большое или малое число формулы переполнялись или теряли точность.
+			var random = new Random(60);
+			for (var trial = 0; trial < 100; trial++)
+			{
+				var degree = 2 + trial%7;
+				var roots = Enumerable.Range(-30, 61).OrderBy(i => random.Next()).Take(degree).Select(i => i/3D).OrderBy(root => root).ToArray();
+				var polynomial = Polynomial.GetPolynomialByRoots(roots);
+				var expected = polynomial.Resolve();
+
+				AssertRoots(roots, expected, 1e-6);
+				AssertRoots(expected, (polynomial*1e60).Resolve(), 1e-9);
+				AssertRoots(expected, (polynomial*-1e-60).Resolve(), 1e-9);
+
+				// Умножение на степень двойки не округляет коэффициенты, поэтому корни совпадают до последнего бита.
+				Assert.Equal(expected, (polynomial*System.Math.Pow(2, 200)).Resolve());
+				Assert.Equal(expected, (polynomial*System.Math.Pow(2, -200)).Resolve());
+			}
+		}
+
+		[Fact]
+		public void ResolveCubicReal_SpecialCases()
+		{
+			// Прежде: [-1,5, -1,5, -1,5] (терялся корень 3), [-∞, NaN, ∞] и деление на 0 при a = 0.
+			AssertRoots(new[] {-1.5, -1.5, 3}, Polynomial.ResolveCubicReal(1, 0, -6.75, -6.75), 1e-12);
+			AssertRoots(new[] {-1.5, 3}, Polynomial.ResolveCubicReal(1, 0, -6.75, -6.75, false), 1e-12);
+			AssertRoots(new[] {1D, 2, 3}, Polynomial.ResolveCubicReal(1e52, -6e52, 11e52, -6e52), 1e-12);
+			AssertRoots(new[] {1D, 2, 3}, Polynomial.ResolveCubicReal(-1, 6, -11, 6, false), 1e-12);
+			AssertRoots(new[] {1D, 2}, Polynomial.ResolveCubicReal(0, 1, -3, 2), 1e-12);
+		}
+
+		#endregion
+
 		#region Legendre polynomials
 
 		[Fact]
@@ -185,6 +406,40 @@ namespace Ruzil3D.Tests
 			Assert.Same(legendre, ((IConvertible) legendre).ToType(typeof(LegendrePolynomial), null));
 			Assert.Same(legendre, ((IConvertible) legendre).ToType(typeof(Polynomial), null));
 			Assert.Equal(5D, ((IConvertible) new Polynomial(5D)).ToType(typeof(double), null));
+		}
+
+		#endregion
+
+		#region Helpers
+
+		/// <summary>
+		/// Проверяет, что найденные корни совпадают с ожидаемыми с учётом порядка и кратности.
+		/// </summary>
+		/// <param name="expected">Ожидаемые корни в порядке возрастания.</param>
+		/// <param name="actual">Найденные корни.</param>
+		/// <param name="tolerance">Допустимая погрешность относительно max(1, |корень|).</param>
+		private static void AssertRoots(double[] expected, double[] actual, double tolerance)
+		{
+			var message = "Ожидалось " + Format(expected) + ", получено " + Format(actual) + ".";
+
+			Assert.True(expected.Length == actual.Length, message);
+			for (var i = 0; i < expected.Length; i++)
+			{
+				Assert.True(System.Math.Abs(actual[i] - expected[i]) <= tolerance*System.Math.Max(1, System.Math.Abs(expected[i])), message);
+			}
+		}
+
+		private static string Format(IEnumerable<double> values)
+		{
+			return "[" + string.Join(", ", values.Select(value => value.ToString("R", CultureInfo.InvariantCulture))) + "]";
+		}
+
+		/// <summary>
+		/// Возвращает ближайшее к десятичному значению число двойной точности, как при записи коэффициента литералом.
+		/// </summary>
+		private static double Parse(decimal value)
+		{
+			return double.Parse(value.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
 		}
 
 		#endregion
