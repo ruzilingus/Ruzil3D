@@ -127,6 +127,7 @@ namespace Ruzil3D.Algebra
 		/// </summary>
 		/// <param name="points">Массив точек представляющий значения полинома в узлах.</param>
 		/// <returns>Интерполяционный полином.</returns>
+		/// <exception cref="ArgumentException">Две точки имеют одинаковую координату X.</exception>
 		public static Polynomial GetPolynomial(params PointD[] points)
 		{
 			//В форме Лагранжа
@@ -137,6 +138,8 @@ namespace Ruzil3D.Algebra
 				var point = points[i];
 				var y = point.Y;
 
+				//Для одной точки произведение пусто и базисный многочлен — константа y: прежде он оставался равным null,
+				//и метод возвращал null вместо многочлена.
 				Polynomial l = null;
 				for (var j = 0; j < points.Length; j++)
 				{
@@ -144,6 +147,12 @@ namespace Ruzil3D.Algebra
 
 					var p = points[j];
 					var d = point.X - p.X;
+
+					//Прежде деление на ноль давало многочлен с бесконечными коэффициентами.
+					if (d.Equals(0D))
+					{
+						throw new ArgumentException("Точки интерполяции должны иметь разные координаты X.", nameof(points));
+					}
 
 					if (l == null)
 					{
@@ -155,7 +164,7 @@ namespace Ruzil3D.Algebra
 					}
 				}
 
-				result += l;
+				result += l ?? y;
 			}
 
 			return result;
@@ -226,14 +235,16 @@ namespace Ruzil3D.Algebra
 		/// <returns></returns>
 		private static Polynomial CalculateBernstein(int k, int n)
 		{
-			var a = 1;
-			var b = 1;
+			//Биномиальный коэффициент C(n, k) вычисляется в double: каждое промежуточное значение
+			//C(n, i + 1) = C(n, i)·(n - i)/(i + 1) — целое число, поэтому при n ≤ 51 результат точный.
+			//Прежде числитель и знаменатель накапливались в int и переполнялись, начиная с n = 13
+			//(B(9, 17)(0,5) получался равным 0,0049 вместо 0,1855), а неверные многочлены попадали в кэш.
+			var binomial = 1D;
 
 			var p1 = Identity;
 			for (var i = 0; i < k; i++)
 			{
-				a *= n - i;
-				b *= i + 1;
+				binomial = binomial * (n - i) / (i + 1);
 				p1 *= Up;
 			}
 
@@ -243,8 +254,7 @@ namespace Ruzil3D.Algebra
 				p2 *= Dn;
 			}
 
-			// ReSharper disable once PossibleLossOfFraction
-			return p1 * p2 * (a / b);
+			return p1 * p2 * binomial;
 		}
 
 		/// <summary>
@@ -926,56 +936,12 @@ namespace Ruzil3D.Algebra
 		}
 
 		/// <summary>
-		/// Вычисляет частное двух многочленов и возвращает остаток.
+		/// Вычисляет частное и остаток от деления двух многочленов.
 		/// </summary>
 		/// <param name="x">Значение содержащее делимое.</param>
 		/// <param name="y">Значение содержащее делитель.</param>
 		/// <param name="rem">Значение, представляющее полученный остаток.</param>
-		/// <returns> Значение, содержащее частное указанных многочленов.</returns>
-		/// <exception cref="DivideByZeroException">Значение параметра <paramref name="y"/> равно нулю</exception>
-		[Obsolete]
-		private static Polynomial DivRem_OBSOLETE(Polynomial x, Polynomial y, out Polynomial rem)
-		{
-			var yDeg = y.Degree;
-
-			if (yDeg == 0)
-			{
-				var num = y.A[0];
-				if (num.Equals(0D))
-				{
-					throw new DivideByZeroException("Значение параметра " + nameof(y) + " равно нулю.");
-				}
-
-				rem = 0;
-				return x / num;
-			}
-
-			var xDeg = x.Degree;
-			var yCoef = y.A[yDeg];
-
-			//todo Метод можно ускорить.
-
-			var result = Empty;
-
-			rem = x;
-			while (xDeg >= yDeg)
-			{
-				var div = GetPolynomial(xDeg - yDeg) * rem.A[xDeg] / yCoef;
-				result += div;
-				rem -= div * y;
-				xDeg--;
-			}
-
-			return result;
-		}
-
-		/// <summary>
-		/// Вычисляет частное двух многочленов и возвращает остаток.
-		/// </summary>
-		/// <param name="x">Значение содержащее делимое.</param>
-		/// <param name="y">Значение содержащее делитель.</param>
-		/// <param name="rem">Значение, представляющее полученный остаток.</param>
-		/// <returns> Значение, содержащее частное указанных многочленов.</returns>
+		/// <returns>Значение, содержащее частное указанных многочленов.</returns>
 		/// <exception cref="DivideByZeroException">Значение параметра <paramref name="y"/> равно нулю</exception>
 		public static Polynomial DivRem(Polynomial x, Polynomial y, out Polynomial rem)
 		{
@@ -1498,11 +1464,11 @@ namespace Ruzil3D.Algebra
 		}
 
 		/// <summary>
-		/// Возвращает площадь фигуры ограниченой графиком исходного многочлена.
+		/// Возвращает определённый интеграл исходного многочлена от <paramref name="x0"/> до <paramref name="x1"/>.
 		/// </summary>
 		/// <param name="x0">Начальная точка.</param>
 		/// <param name="x1">Конечная точка.</param>
-		/// <returns>Площадь фигуры ограниченой графиком исходного многочлена.</returns>
+		/// <returns>Определённый интеграл исходного многочлена, то есть площадь со знаком: части фигуры под осью абсцисс учитываются со знаком минус (например, для <i>x</i> на отрезке [-1, 1] результат равен 0).</returns>
 		public double GetArea(double x0, double x1)
 		{
 			double result = 0;
@@ -1555,7 +1521,9 @@ namespace Ruzil3D.Algebra
 
 			for (var i = order; i < A.Length; i++)
 			{
-				var coef = i;
+				//Убывающий факториал i·(i - 1)·…·(i - order + 1) вычисляется в double: прежде он вычислялся в int
+				//и переполнялся, начиная с 13! (x¹³ после 13 дифференцирований давал 1932053504 вместо 6227020800).
+				double coef = i;
 				for (var j = 1; j < order; j++)
 				{
 					coef *= i - j;
@@ -1647,14 +1615,14 @@ namespace Ruzil3D.Algebra
 				throw new ArgumentException("Значение " + nameof(y) + " должно быть не меньше 0");
 			}
 
+			//Нулевая степень любого многочлена, в том числе нулевого, равна 1: прежде проверка на Empty выполнялась
+			//раньше, и Empty.Pow(0) возвращал 0, хотя new Polynomial(0).Pow(0) возвращал 1.
+			if (y == 0) return Identity;
 			if (ReferenceEquals(this, Identity)) return Identity;
 			if (ReferenceEquals(this, Empty)) return Empty;
 
 			switch (y)
 			{
-				case 0:
-					return Identity;
-
 				case 1:
 					//return new Polynomial {A = A.Clone() as double[]};
 					return this;
@@ -1820,15 +1788,15 @@ namespace Ruzil3D.Algebra
 		/// Показывает, равен ли этот экземпляр заданному объекту.
 		/// </summary>
 		/// <returns>
-		/// Значение <b>true</b>, если <paramref name="obj"/> относится к типу <see cref="Polynomial"/> и представляет одинаковые значения с исходным объектом; в противном случае — значение <b>false</b>.
+		/// Значение <b>true</b>, если <paramref name="obj"/> относится к типу <see cref="Polynomial"/> (в том числе к производному типу) и представляет одинаковые значения с исходным объектом; в противном случае — значение <b>false</b>.
 		/// </returns>
 		/// <param name="obj">Другой объект, подлежащий сравнению.</param>
 		public override bool Equals(object obj)
 		{
-			if (ReferenceEquals(null, obj)) return false;
-			if (ReferenceEquals(this, obj)) return true;
-			if (obj.GetType() != GetType()) return false;
-			return Equals((Polynomial)obj);
+			//Сравнение по значению, как у оператора ==. Прежде требовалось совпадение типов, и многочлен Лежандра
+			//LegendrePolynomial(1) был равен Polynomial.Up по оператору ==, но не по Equals.
+			var other = obj as Polynomial;
+			return !ReferenceEquals(other, null) && this == other;
 		}
 
 		/// <summary>
@@ -1839,7 +1807,49 @@ namespace Ruzil3D.Algebra
 		/// </returns>
 		public override int GetHashCode()
 		{
-			return 0;
+			//Прежде хэш-код всегда был равен 0, и хэш-таблицы многочленов вырождались в списки.
+			//Хэш-код согласован с оператором ==: старшие нулевые коэффициенты не учитываются, -0 и 0 (как и все NaN) неразличимы.
+			unchecked
+			{
+				var hashCode = 0;
+				for (var i = 0; i <= Degree; i++)
+				{
+					hashCode = (hashCode * 397) ^ GetCoefficientHashCode(A[i]);
+				}
+
+				return hashCode;
+			}
+		}
+
+		/// <summary>
+		/// Возвращает хэш-код коэффициента, одинаковый для равных по <see cref="double.Equals(double)"/> значений.
+		/// </summary>
+		/// <param name="value">Коэффициент.</param>
+		/// <returns>Хэш-код коэффициента.</returns>
+		private static int GetCoefficientHashCode(double value)
+		{
+			if (value.Equals(0D))
+			{
+				return 0;
+			}
+
+			if (double.IsNaN(value))
+			{
+				return int.MinValue;
+			}
+
+			//Биты перемешиваются финализатором MurmurHash3: у небольших целых и коротких десятичных чисел младшие биты
+			//двоичного представления нулевые, и без перемешивания хэш-коды многочленов часто совпадают.
+			unchecked
+			{
+				var bits = (ulong)BitConverter.DoubleToInt64Bits(value);
+				bits ^= bits >> 33;
+				bits *= 0xFF51AFD7ED558CCDUL;
+				bits ^= bits >> 33;
+				bits *= 0xC4CEB9FE1A85EC53UL;
+				bits ^= bits >> 33;
+				return (int)bits ^ (int)(bits >> 32);
+			}
 		}
 
 		#endregion
@@ -1872,8 +1882,8 @@ namespace Ruzil3D.Algebra
 		/// <remarks>
 		/// <code>
 		/// var pol = new Polynomial(0.5, -3, 4, -System.Math.PI);
-		/// Console.Write(pol); //Результат: 1/2 - 3 x + 4 x² - π x³
-		/// Console.Write(pol/3); //Результат: 1/6 - x + 4/3 x² - π/3 x³
+		/// Console.Write(pol); //Результат: -π x³ + 4 x² - 3 x + 1/2
+		/// Console.Write(pol/3); //Результат: -π/3 x³ + 4/3 x² - x + 1/6
 		/// </code>
 		/// </remarks>
 		public override string ToString()
@@ -2197,7 +2207,15 @@ namespace Ruzil3D.Algebra
 		/// <param name="conversionType"><see cref="T:System.Type"/>, в который преобразуется значение данного экземпляра. </param><param name="provider">Реализация интерфейса <see cref="T:System.IFormatProvider"/>, предоставляющая сведения об особенностях форматирования, связанных с языком и региональными параметрами. </param><filterpriority>2</filterpriority>
 		public object ToType(Type conversionType, IFormatProvider provider)
 		{
-			if (conversionType == typeof(Polynomial))
+			//Прежде преобразование в строку выбрасывало InvalidCastException для многочлена ненулевой степени
+			//(хотя Convert.ToString работал), а преобразование в фактический тип экземпляра, например в LegendrePolynomial,
+			//пыталось получить число.
+			if (conversionType == typeof(string))
+			{
+				return ToString(provider);
+			}
+
+			if (conversionType != null && conversionType.IsInstanceOfType(this))
 			{
 				return this;
 			}

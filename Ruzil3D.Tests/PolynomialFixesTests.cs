@@ -76,5 +76,117 @@ namespace Ruzil3D.Tests
 		}
 
 		#endregion
+
+		#region Bernstein polynomials and derivatives
+
+		[Fact]
+		public void Bernstein_HighDegree_UsesExactBinomials()
+		{
+			// Прежде биномиальные коэффициенты вычислялись в int и переполнялись, начиная с n = 13:
+			// B(9, 17)(0,5) был равен 0,0049 вместо 0,1855, а B(15, 31) — тождественно нулю.
+			Assert.Equal(0.1854705810546875, Polynomial.GetBernstein(9, 17).GetValue(0.5));
+
+			var expected = 300540195/2147483648D;
+			Assert.InRange(Polynomial.GetBernstein(15, 31).GetValue(0.5), expected*(1 - 1e-12), expected*(1 + 1e-12));
+
+			// Базисные многочлены Бернштейна образуют разбиение единицы (прежде при n = 20 сумма была равна 0,79).
+			var sum20 = Enumerable.Range(0, 21).Sum(k => Polynomial.GetBernstein(k, 20).GetValue(0.3));
+			Assert.InRange(sum20, 1 - 1e-12, 1 + 1e-12);
+
+			var sum31 = Enumerable.Range(0, 32).Sum(k => Polynomial.GetBernstein(k, 31).GetValue(0.3));
+			Assert.InRange(sum31, 1 - 1e-9, 1 + 1e-9);
+		}
+
+		[Fact]
+		public void GetDerivative_HighOrder_DoesNotOverflow()
+		{
+			// Прежде убывающий факториал вычислялся в int: x¹³ после 13 дифференцирований давал 1932053504 вместо 13!.
+			Assert.True(Polynomial.GetPolynomial(13).GetDerivative(13) == new Polynomial(6227020800D));
+			Assert.True(Polynomial.GetPolynomial(20).GetDerivative(18) == new Polynomial(0, 0, 1216451004088320000D));
+		}
+
+		#endregion
+
+		#region Interpolation, equality and conversions
+
+		[Fact]
+		public void GetPolynomial_SinglePoint_IsConstant()
+		{
+			// Прежде для одной точки возвращался null.
+			var polynomial = Polynomial.GetPolynomial(new[] {new PointD(2, 5)});
+
+			Assert.NotNull(polynomial);
+			Assert.True(polynomial == new Polynomial(5D));
+		}
+
+		[Fact]
+		public void GetPolynomial_DuplicateX_Throws()
+		{
+			// Прежде деление на ноль давало многочлен с бесконечными коэффициентами.
+			Assert.Throws<ArgumentException>(() => Polynomial.GetPolynomial(new[] {new PointD(1, 1), new PointD(1, 2)}));
+			Assert.Throws<ArgumentException>(() => Polynomial.GetPolynomial(new[] {new PointD(0, 0), new PointD(1, 1), new PointD(0, 3)}));
+
+			// Различные узлы по-прежнему допустимы.
+			Assert.True(Polynomial.GetPolynomial(new[] {new PointD(0, 1), new PointD(1, 3), new PointD(2, 7)}) == new Polynomial(1, 1, 1));
+		}
+
+		[Fact]
+		public void GetHashCode_IsConsistentWithEquality()
+		{
+			// Прежде хэш-код всегда был равен 0.
+			Assert.Equal(new Polynomial(1, 2).GetHashCode(), new Polynomial(1, 2, 0, 0).GetHashCode());
+			Assert.Equal(new Polynomial(-0D, 1).GetHashCode(), new Polynomial(0D, 1).GetHashCode());
+			Assert.Equal(Polynomial.Empty.GetHashCode(), new Polynomial(0, -0D).GetHashCode());
+			Assert.Equal(new Polynomial(double.NaN, 1).GetHashCode(), new Polynomial(-double.NaN, 1).GetHashCode());
+
+			var polynomials = Enumerable.Range(0, 1000).Select(i => new Polynomial(i%10, i/10%10, i/100)).ToArray();
+			Assert.True(polynomials.Select(p => p.GetHashCode()).Distinct().Count() > 900);
+			Assert.Equal(1000, new HashSet<Polynomial>(polynomials).Count);
+		}
+
+		[Fact]
+		public void Equals_IsConsistentWithOperator()
+		{
+			// Прежде Equals требовал совпадения типов: LegendrePolynomial(1) == Polynomial.Up, но Equals возвращал false.
+			var legendre = new LegendrePolynomial(1);
+
+			Assert.True(legendre == Polynomial.Up);
+			Assert.True(legendre.Equals(Polynomial.Up));
+			Assert.True(Polynomial.Up.Equals(legendre));
+			Assert.Equal(legendre.GetHashCode(), Polynomial.Up.GetHashCode());
+			Assert.False(Polynomial.Up.Equals(null));
+			Assert.False(Polynomial.Up.Equals("x"));
+		}
+
+		[Fact]
+		public void Pow_Zero_IsIdentity()
+		{
+			// Прежде Polynomial.Empty.Pow(0) возвращал 0, хотя new Polynomial(0).Pow(0) возвращал 1.
+			Assert.True(Polynomial.IsIdentity(Polynomial.Empty.Pow(0)));
+			Assert.True(Polynomial.IsIdentity(new Polynomial(0D).Pow(0)));
+			Assert.True(Polynomial.IsEmpty(Polynomial.Empty.Pow(3)));
+		}
+
+		[Fact]
+		public void ToType_StringAndOwnType()
+		{
+			// Прежде ToType(typeof(string)) выбрасывал InvalidCastException, а преобразование в LegendrePolynomial пыталось получить число.
+			IConvertible polynomial = new Polynomial(1, 1);
+			var legendre = new LegendrePolynomial(3);
+
+			TestUtil.WithCulture("", () =>
+			{
+				Assert.Equal(polynomial.ToString(), polynomial.ToType(typeof(string), CultureInfo.InvariantCulture));
+				Assert.Equal(Convert.ToString(polynomial, CultureInfo.InvariantCulture), polynomial.ToType(typeof(string), CultureInfo.InvariantCulture));
+				return 0;
+			});
+
+			Assert.Same(polynomial, polynomial.ToType(typeof(Polynomial), null));
+			Assert.Same(legendre, ((IConvertible) legendre).ToType(typeof(LegendrePolynomial), null));
+			Assert.Same(legendre, ((IConvertible) legendre).ToType(typeof(Polynomial), null));
+			Assert.Equal(5D, ((IConvertible) new Polynomial(5D)).ToType(typeof(double), null));
+		}
+
+		#endregion
 	}
 }
