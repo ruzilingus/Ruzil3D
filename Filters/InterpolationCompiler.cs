@@ -21,7 +21,9 @@ namespace Ruzil3D.Filters
 
         public double GetValue(double d)
         {
-            //Определяем функцию (непрерывно и гладко) на всей числовой прямой
+            //Определяем функцию (непрерывно и гладко) на всей числовой прямой.
+            //Номер периода div вычисляется в double: приведение к int переполнялось для далёких и бесконечных
+            //аргументов, и взаимная рекурсия переполняла стек. Для бесконечного аргумента результат — NaN.
             if (d < 0)
             {
                 if (IsClosed)
@@ -29,7 +31,7 @@ namespace Ruzil3D.Filters
                     d = d - _buildDMax * Math.Floor(d / _buildDMax);
                     return GetValue(d);
                 }
-                var div = (int)(d / _buildDMax);
+                var div = Math.Truncate(d / _buildDMax);
                 d = d - div * _buildDMax;
 
                 if (div % 2 == 0)
@@ -45,7 +47,7 @@ namespace Ruzil3D.Filters
                     d = d - _buildDMax * Math.Floor(d / _buildDMax);
                     return GetValue(d);
                 }
-                var div = (int)(d / _buildDMax);
+                var div = Math.Truncate(d / _buildDMax);
                 d = d - div * _buildDMax;
 
                 if (div % 2 == 0)

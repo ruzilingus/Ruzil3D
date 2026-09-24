@@ -96,7 +96,8 @@ namespace Ruzil3D.Algebra
 			var lines = new List<Vector>();
 			for (var i = 0; i < size; i++)
 			{
-				var line = new Vector(new double[i + 1]) {[i] = 1};
+				//Строки полной длины: прежде строка i имела длину i + 1, и запись в элемент правее диагонали падала.
+				var line = new Vector(new double[size]) {[i] = 1};
 				lines.Add(line);
 			}
 
@@ -257,7 +258,8 @@ namespace Ruzil3D.Algebra
 		/// <returns>Произведение исходной матрицы на вектор <paramref name="y"/>.</returns>
 		public static Vector operator *(Matrix x, Vector y)
 		{
-			var result = new double[y.Length];
+			//Длина результата равна числу строк матрицы (прежде бралась длина вектора).
+			var result = new double[x.Length];
 
 			for (var i = 0; i < x.Length; i++)
 			{
@@ -287,16 +289,18 @@ namespace Ruzil3D.Algebra
 				yArray = x;
 			}
 
-			var result = new Matrix(new Vector[y.Length]);
+			//Число строк суммы равно большему из двух: прежде бралось число строк второго слагаемого.
+			var result = new Matrix(new Vector[yArray.Length]);
 
 			for (var i = 0; i < xArray.Length; i++)
 			{
 				result[i] = xArray[i] + yArray[i];
 			}
 
+			//Копируем недостающие строки, чтобы сумма не делила массивы строк со слагаемым.
 			for (var i = xArray.Length; i < yArray.Length; i++)
 			{
-				result[i] = yArray[i];
+				result[i] = (Vector) yArray[i].Clone();
 			}
 
 			return result;

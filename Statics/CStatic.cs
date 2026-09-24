@@ -797,10 +797,28 @@ namespace Ruzil3D.Utility
 
 		private static void DoubleToStringSimple(double num, int digits, out string mantissa, out string character)
 		{
+			if (digits < 1)
+			{
+				throw new ArgumentOutOfRangeException(nameof(digits), "Количество значащих цифр должно быть больше нуля.");
+			}
+
+			character = "";
+
+			if (double.IsNaN(num))
+			{
+				mantissa = "NaN";
+				return;
+			}
+
+			if (double.IsInfinity(num))
+			{
+				mantissa = num > 0 ? "∞" : "-∞";
+				return;
+			}
+
 			if (num.Equals(0D))
 			{
 				mantissa = "0." + new string('0', digits - 1);
-				character = "";
 				return;
 			}
 
@@ -822,32 +840,33 @@ namespace Ruzil3D.Utility
 			if (exp2 <= abs && abs < exp1 && isInt)
 			{
 				mantissa = Round(num).ToString(CultureInfo.InvariantCulture);
-				character = "";
 				return;
 			}
 
 			if (1 <= abs && abs < exp3)
 			{
+				//Если значащих цифр меньше, чем цифр в целой части, дробная часть не выводится
+				//(прежде отрицательная длина строки нулей приводила к исключению).
 				var exp = Exp10(digits - ord);
-				mantissa = (Round(num * exp) / exp).ToString("0." + new string('0', digits - ord));
-				character = "";
+				mantissa = (Round(num * exp) / exp).ToString("0." + new string('0', Max(0, digits - ord)));
 				return;
 			}
 
 			if (exp4 <= abs && abs < 1)
 			{
 				mantissa = (Round(num * exp2) / exp2).ToString("0." + new string('0', digits - 1));
-				character = "";
 				return;
 			}
 			else
 			{
-				var exp = Exp10(digits - ord);
+				//Мантисса экспоненциальной записи содержит digits - 3 значащих цифр, но не меньше одной.
 				const int offset = 3;
+				var significant = Max(digits, offset + 1);
+				var exp = Exp10(significant - ord);
 				var expOffset = Exp10(offset);
 
-				mantissa = (Round(num * exp / expOffset) * expOffset / exp2).ToString("0." + new string('0', digits - offset - 1));
-				character = "·10" + GetIndex(ord - 1, true); ;
+				mantissa = (Round(num * exp / expOffset) * expOffset / Exp10(significant - 1)).ToString("0." + new string('0', significant - offset - 1));
+				character = "·10" + GetIndex(ord - 1, true);
 				return;
 			}
 
@@ -859,6 +878,7 @@ namespace Ruzil3D.Utility
 		/// <param name="num">Исходное число.</param>
 		/// <param name="digits">Порядок округления числа</param>
 		/// <returns>Строковое представление числа с учетом порядка.</returns>
+		/// <exception cref="ArgumentOutOfRangeException">Значение параметра <paramref name="digits"/> меньше 1.</exception>
 		public static string DoubleToStringSimple(double num, int digits)
 		{
 			string mantissa;

@@ -393,11 +393,27 @@ namespace Ruzil3D.Algebra
 			var result = "";
 
 
-			var order = Max(0, 13 - (int)GetOrder(Abs));
-			CStatic.AddLinearItem(ref result, System.Math.Round(W, order), null);
-			CStatic.AddLinearItem(ref result, System.Math.Round(U.X, order), "i");
-			CStatic.AddLinearItem(ref result, System.Math.Round(U.Y, order), "j");
-			CStatic.AddLinearItem(ref result, System.Math.Round(U.Z, order), "k");
+			var w = W;
+			var x = U.X;
+			var y = U.Y;
+			var z = U.Z;
+
+			//System.Math.Round принимает не более 15 знаков после запятой, поэтому очень маленькие кватернионы
+			//(с модулем не больше 0.001) выводятся без округления: прежде для них выбрасывалось исключение.
+			var order = 13 - (int)GetOrder(Abs);
+			if (order <= 15)
+			{
+				order = Max(0, order);
+				w = System.Math.Round(w, order);
+				x = System.Math.Round(x, order);
+				y = System.Math.Round(y, order);
+				z = System.Math.Round(z, order);
+			}
+
+			CStatic.AddLinearItem(ref result, w, null);
+			CStatic.AddLinearItem(ref result, x, "i");
+			CStatic.AddLinearItem(ref result, y, "j");
+			CStatic.AddLinearItem(ref result, z, "k");
 
 			/*
 			var order = 1E13*Abs;

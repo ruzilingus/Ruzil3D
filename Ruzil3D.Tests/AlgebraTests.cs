@@ -95,5 +95,96 @@ namespace Ruzil3D.Tests
 			Assert.True(sum == new Fraction(5, 6));
 			Assert.Equal(5D/6D, (double) sum, 15);
 		}
+
+		[Fact]
+		public void Point3D_ToString_ShortVectors()
+		{
+			// Прежде для векторов длиной не больше 0.001 System.Math.Round получал больше 15 знаков и выбрасывал исключение.
+			var text = TestUtil.WithCulture("", () => new Point3D(0.001, 0, 0).ToString());
+
+			Assert.Equal("X = 0.001 Y = 0 Z = 0", text);
+			Assert.Contains("1E-20", TestUtil.WithCulture("", () => new Point3D(1e-20, 2e-20, 0).ToString()));
+			Assert.Equal("X = 1 Y = 2 Z = 3", TestUtil.WithCulture("", () => new Point3D(1, 2, 3).ToString()));
+		}
+
+		[Fact]
+		public void Quaternion_ToString_SmallQuaternion()
+		{
+			var text = TestUtil.WithCulture("", () => new Quaternion(0.001, 0, 0, 0).ToString());
+
+			Assert.False(string.IsNullOrEmpty(text));
+			Assert.Equal("0", new Quaternion(0, 0, 0, 0).ToString());
+		}
+
+		private static Matrix Rows(params double[][] rows)
+		{
+			var lines = new Vector[rows.Length];
+			for (var i = 0; i < rows.Length; i++)
+			{
+				lines[i] = new Vector(rows[i]);
+			}
+
+			return new Matrix(lines);
+		}
+
+		[Fact]
+		public void Matrix_TimesVector_HasLengthOfRowCount()
+		{
+			// Прежде длина результата бралась по длине вектора: 3×2 · (1, 1) падал, 2×3 · (1, 1, 1) давал вектор длины 3.
+			var tall = Rows(new[] {1D, 2}, new[] {3D, 4}, new[] {5D, 6});
+			var wide = Rows(new[] {1D, 2, 3}, new[] {4D, 5, 6});
+
+			var product1 = tall*new Vector(1, 1);
+			var product2 = wide*new Vector(1, 1, 1);
+
+			Assert.Equal(3, product1.Length);
+			Assert.Equal(new[] {3D, 7, 11}, new[] {product1[0], product1[1], product1[2]});
+			Assert.Equal(2, product2.Length);
+			Assert.Equal(new[] {6D, 15}, new[] {product2[0], product2[1]});
+		}
+
+		[Fact]
+		public void Matrix_SumOfDifferentRowCounts()
+		{
+			// Прежде 3 строки + 2 строки падало, а в обратном порядке сумма делила строки со слагаемым.
+			var three = Rows(new[] {1D, 2}, new[] {3D, 4}, new[] {5D, 6});
+			var two = Rows(new[] {10D, 20}, new[] {30D, 40});
+
+			var sum1 = three + two;
+			var sum2 = two + three;
+			var difference = three - two;
+
+			Assert.Equal(3, sum1.Length);
+			Assert.True(sum1 == sum2);
+			Assert.Equal(44, sum1[1, 1]);
+			Assert.Equal(6, sum1[2, 1]);
+			Assert.Equal(-36, difference[1, 1]);
+
+			sum2[2, 1] = 777;
+			Assert.Equal(6, three[2, 1]);
+		}
+
+		[Fact]
+		public void Matrix_Identity_IsSquare()
+		{
+			var identity = Matrix.GetIdentity(3);
+
+			// Прежде строка i имела длину i + 1, и запись правее диагонали падала.
+			identity[0, 2] = 5;
+
+			Assert.Equal(5, identity[0, 2]);
+			Assert.Equal(3, identity[0].Length);
+		}
+
+		[Fact]
+		public void Matrix_Inverse()
+		{
+			var inverse = Rows(new[] {4D, 7}, new[] {2D, 6}).GetInverse();
+
+			Assert.Equal(0.6, inverse[0, 0], 12);
+			Assert.Equal(-0.7, inverse[0, 1], 12);
+			Assert.Equal(-0.2, inverse[1, 0], 12);
+			Assert.Equal(0.4, inverse[1, 1], 12);
+		}
 	}
 }

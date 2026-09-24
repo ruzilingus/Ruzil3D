@@ -168,23 +168,29 @@ namespace Ruzil3D.Curves
 		/// Получает и задает точность аппроксимации аппроксимации.
 		/// </summary>
 		/// <remarks>Изменение этого параметра сбрасывает результаты компиляции и как следствие приводит к повторной компиляции при следующем обращении к функциям <see cref="GetParameter"/> и <see cref="GetValue"/>.</remarks>
+		/// <exception cref="ArgumentOutOfRangeException">Значение меньше 1 или больше 30.</exception>
 		public int Accuracy
 		{
 			get { return _accuracy; }
 			set
 			{
+				//Проверка стоит до сравнения с текущим значением: прежде значение 0 проходило через конструктор без проверки.
+				//Кривая делится на 2^value участков, поэтому при value > 30 сдвиг 1 << value переполнялся.
+				if (value < 1 || value > MaxAccuracy)
+				{
+					throw new ArgumentOutOfRangeException(nameof(Accuracy), value,
+						"Точность аппроксимации должна быть от 1 до " + MaxAccuracy + ".");
+				}
+
 				if (_accuracy != value)
 				{
-					if (value < 1)
-					{
-						throw new ArgumentException("Точность аппроксимации должна быть больше 0.", nameof(Accuracy));
-					}
-
 					_accuracy = value;
 					Reset();
 				}
 			}
 		}
+
+		private const int MaxAccuracy = 30;
 
 		private EApproximationType _type;
 
@@ -235,7 +241,7 @@ namespace Ruzil3D.Curves
 		/// <param name="curve">Исходная кривая.</param>
 		/// <param name="acc">Показатель разбиения. Кривая делится на 2ᵃᶜᶜ участков.</param>
 		/// <param name="type">Способ аппроксимации.</param>
-		/// <exception cref="ArgumentException">Передано значение меньше 1</exception>
+		/// <exception cref="ArgumentOutOfRangeException">Значение <paramref name="acc"/> меньше 1 или больше 30.</exception>
 		public ParametricCurveDistanceCompiler(T curve, int acc = 6, EApproximationType type = EApproximationType.Default)
 		{
 			Curve = curve;

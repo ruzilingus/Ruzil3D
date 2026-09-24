@@ -23,6 +23,16 @@ namespace Ruzil3D.Filters
 
         private void Compile(Point3D[] curve, ExtrapolationMode mode = ExtrapolationMode.Mirror)
         {
+            if (curve == null)
+            {
+                throw new ArgumentNullException(nameof(curve));
+            }
+
+            if (curve.Length == 0)
+            {
+                throw new ArgumentException("Кривая должна содержать хотя бы две различные точки.", nameof(curve));
+            }
+
             _mode = mode;
             _points = curve;
 
@@ -47,9 +57,9 @@ namespace Ruzil3D.Filters
             //Заполняем вспомогательные поля
             _buildDMax = _distance[_distance.Length - 1];
 
-            if (_buildDMax.Equals(0D))
+            if (!(_buildDMax > 0))
             {
-                throw new Exception("Кривая должна иметь хотя-бы две уникальные точки");
+                throw new ArgumentException("Кривая должна содержать хотя бы две различные точки.", nameof(curve));
             }
 
             _buildFBeg = _points[0];
@@ -100,7 +110,9 @@ namespace Ruzil3D.Filters
 
         public Point3D GetValue3D(double d)
         {
-            //Определяем функцию (непрерывно и гладко) на всей числовой прямой
+            //Определяем функцию (непрерывно и гладко) на всей числовой прямой.
+            //Номер периода div вычисляется в double: приведение к int переполнялось для далёких и бесконечных
+            //аргументов, и взаимная рекурсия переполняла стек. Для бесконечного аргумента результат — NaN.
             if (d < 0)
             {
                 if (IsClosed)
@@ -108,7 +120,7 @@ namespace Ruzil3D.Filters
                     d = d - _buildDMax * Floor(d / _buildDMax);
                     return GetValue3D(d);
                 }
-                var div = (int)(d / _buildDMax);
+                var div = Truncate(d / _buildDMax);
                 d = d - div * _buildDMax;
 
                 if (div % 2 == 0)
@@ -124,7 +136,7 @@ namespace Ruzil3D.Filters
                     d = d - _buildDMax * Floor(d / _buildDMax);
                     return GetValue3D(d);
                 }
-                var div = (int)(d / _buildDMax);
+                var div = Truncate(d / _buildDMax);
                 d = d - div * _buildDMax;
 
                 if (div % 2 == 0)

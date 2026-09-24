@@ -359,10 +359,21 @@ namespace Ruzil3D.Algebra
 			var z = Round15(Z, order);
 			*/
 
-			var order = Max(0, 13 - (int)GetOrder(Length));
-			var x = System.Math.Round(X, order);
-			var y = System.Math.Round(Y, order);
-			var z = System.Math.Round(Z, order);
+			var x = X;
+			var y = Y;
+			var z = Z;
+
+			//Округляем до 13 значащих цифр относительно длины, чтобы скрыть погрешность вычислений.
+			//System.Math.Round принимает не более 15 знаков после запятой, поэтому очень короткие векторы
+			//(длиной не больше 0.001) выводятся без округления: прежде для них выбрасывалось исключение.
+			var order = 13 - (int)GetOrder(Length);
+			if (order <= 15)
+			{
+				order = Max(0, order);
+				x = System.Math.Round(X, order);
+				y = System.Math.Round(Y, order);
+				z = System.Math.Round(Z, order);
+			}
 
 			return nameof(X) + " = " + x + " " + nameof(Y) + " = " + y + " " + nameof(Z) + " = " + z;
 		}

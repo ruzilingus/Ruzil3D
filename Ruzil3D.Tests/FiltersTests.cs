@@ -32,6 +32,62 @@ namespace Ruzil3D.Tests
 		}
 
 		[Fact]
+		public void CurveInterpolationCompiler_ExtrapolatesByPointReflection()
+		{
+			var compiler = new CurveInterpolationCompiler(new[] {Point3D.Empty, new Point3D(1, 0, 0), new Point3D(2, 0, 0)});
+
+			// Для прямой центральная симметрия относительно концов продолжает её на несколько периодов в обе стороны.
+			TestUtil.Near(new Point3D(-0.5, 0, 0), compiler.GetValue3D(-0.5));
+			TestUtil.Near(new Point3D(-3.5, 0, 0), compiler.GetValue3D(-3.5));
+			TestUtil.Near(new Point3D(2.5, 0, 0), compiler.GetValue3D(2.5));
+			TestUtil.Near(new Point3D(10.25, 0, 0), compiler.GetValue3D(10.25));
+		}
+
+		[Fact]
+		public void CurveInterpolationCompiler_InfiniteArgument_DoesNotOverflowStack()
+		{
+			// Прежде (int)(d / DMax) переполнялся, и взаимная рекурсия приводила к StackOverflow, который нельзя перехватить.
+			var compiler = new CurveInterpolationCompiler(new[] {Point3D.Empty, new Point3D(1, 0, 0), new Point3D(1, 1, 0)});
+			var closed = new CurveInterpolationCompiler(new[] {Point3D.Empty, new Point3D(1, 0, 0), new Point3D(1, 1, 0)},
+				ExtrapolationMode.Closed);
+
+			Assert.True(compiler.GetValue3D(double.PositiveInfinity).IsNaN);
+			Assert.True(compiler.GetValue3D(double.NegativeInfinity).IsNaN);
+			Assert.True(closed.GetValue3D(double.PositiveInfinity).IsNaN);
+			Assert.False(compiler.GetValue3D(1e300).IsNaN);
+			Assert.False(compiler.GetValue3D(-1e300).IsNaN);
+		}
+
+		[Fact]
+		public void CurveBlurFilter_VeryShortCurve_DoesNotOverflowStack()
+		{
+			// Ядро сглаживания выходит на ±6 единиц, и для кривой короче ~3e-9 прежде переполнялся стек.
+			var filter = new CurveBlurFilter(new[] {Point3D.Empty, new Point3D(1e-10, 0, 0), new Point3D(2e-10, 0, 0)});
+
+			var value = filter.GetValue3D(filter.DMax/2);
+
+			TestUtil.Near(new Point3D(1e-10, 0, 0), value, 1e-12);
+		}
+
+		[Fact]
+		public void InterpolationCompiler_InfiniteArgument_ReturnsNaN()
+		{
+			var compiler = new InterpolationCompiler(new[] {new PointD(0, 1), new PointD(2, 5)});
+
+			Assert.True(double.IsNaN(compiler.GetValue(double.PositiveInfinity)));
+			Assert.Equal(-1, compiler.GetValue(-1), 12);
+		}
+
+		[Fact]
+		public void CurveInterpolationCompiler_RejectsDegenerateCurves()
+		{
+			Assert.Throws<ArgumentException>(() => new CurveInterpolationCompiler(new Point3D[0]));
+			Assert.Throws<ArgumentException>(() => new CurveInterpolationCompiler(new[] {Point3D.UnitX}));
+			Assert.Throws<ArgumentException>(() => new CurveInterpolationCompiler(new[] {Point3D.UnitX, Point3D.UnitX}));
+			Assert.Throws<ArgumentNullException>(() => new CurveInterpolationCompiler((Point3D[]) null));
+		}
+
+		[Fact]
 		public void InterpolationCompiler_RejectsDegenerateInput()
 		{
 			// Прежде с одной точкой GetValue не завершался.

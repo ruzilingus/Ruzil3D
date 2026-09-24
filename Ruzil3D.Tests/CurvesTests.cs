@@ -98,6 +98,20 @@ namespace Ruzil3D.Tests
 		}
 
 		[Fact]
+		public void DistanceCompiler_ValidatesAccuracy()
+		{
+			// Прежде значение 0 проходило через конструктор без проверки, а при 31 и больше сдвиг 1 << acc переполнялся.
+			var curve = StraightBezier(3);
+
+			Assert.Throws<ArgumentOutOfRangeException>(() => new ParametricCurveDistanceCompiler<BezierCurve>(curve, 0));
+			Assert.Throws<ArgumentOutOfRangeException>(() => new ParametricCurveDistanceCompiler<BezierCurve>(curve, 31));
+
+			var compiler = new ParametricCurveDistanceCompiler<BezierCurve>(curve, 30);
+			Assert.Throws<ArgumentOutOfRangeException>(() => { compiler.Accuracy = 0; });
+			Assert.Equal(30, compiler.Accuracy);
+		}
+
+		[Fact]
 		public void GetDistance_TinyIntervalFarFromZero_DoesNotHang()
 		{
 			var curve = new BezierCurve(Point3D.Empty, new Point3D(1, 2, 0), new Point3D(3, 2, 0), new Point3D(4, 0, 0));

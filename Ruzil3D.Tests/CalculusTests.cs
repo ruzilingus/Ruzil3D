@@ -22,6 +22,19 @@ namespace Ruzil3D.Tests
 			{EIntegrateRule.Gauss10, 1e-10}
 		};
 
+		public static TheoryData<EIntegrateRule> AllRules => new TheoryData<EIntegrateRule>
+		{
+			EIntegrateRule.Default,
+			EIntegrateRule.Rectangle,
+			EIntegrateRule.Trapezoidal,
+			EIntegrateRule.Simpson,
+			EIntegrateRule.Gauss2,
+			EIntegrateRule.Gauss3,
+			EIntegrateRule.Gauss5,
+			EIntegrateRule.Gauss6,
+			EIntegrateRule.Gauss10
+		};
+
 		[Theory]
 		[MemberData(nameof(Rules))]
 		public void Integrate_Sine(EIntegrateRule rule, double tolerance)
@@ -41,8 +54,8 @@ namespace Ruzil3D.Tests
 		}
 
 		[Theory]
-		[MemberData(nameof(Rules))]
-		public void Integrate_ShortIntervalFarFromZero_DoesNotHang(EIntegrateRule rule, double tolerance)
+		[MemberData(nameof(AllRules))]
+		public void Integrate_ShortIntervalFarFromZero_DoesNotHang(EIntegrateRule rule)
 		{
 			// Шаг интегрирования меньше точности представления аргумента: прежде цикл t += step не завершался.
 			const double a = 0.5;
@@ -54,8 +67,8 @@ namespace Ruzil3D.Tests
 		}
 
 		[Theory]
-		[MemberData(nameof(Rules))]
-		public void Integrate_FarFromZero_UsesExactPanelCount(EIntegrateRule rule, double tolerance)
+		[MemberData(nameof(AllRules))]
+		public void Integrate_FarFromZero_UsesExactPanelCount(EIntegrateRule rule)
 		{
 			// Прежде из-за накопления ошибки в t += step на этом отрезке вычислялась лишняя панель (результат 1.001).
 			var value = TestUtil.CompletesWithin(() => Calculus.Calculus.Integrate(x => 1, 1e10, 1e10 + 1, rule));

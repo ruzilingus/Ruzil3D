@@ -439,7 +439,10 @@ namespace Ruzil3D.Geometry
 
 			double cos1, cos2, cos3, p;
 
-			if (norm.Equals(0D) || double.IsNaN(norm))
+			//Проверяем и сами коэффициенты: Math.Sign(NaN) выбрасывает исключение, и прежде ToString падал,
+			//если плоскость построена по коллинеарным точкам или коэффициент D не является числом.
+			if (norm.Equals(0D) || double.IsNaN(norm) ||
+			    double.IsNaN(A) || double.IsNaN(B) || double.IsNaN(C) || double.IsNaN(D))
 			{
 				cos1 = cos2 = cos3 = p = double.NaN;
 			}

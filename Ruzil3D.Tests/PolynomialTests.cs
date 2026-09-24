@@ -48,6 +48,32 @@ namespace Ruzil3D.Tests
 		}
 
 		[Fact]
+		public void Division_WithTrailingZeroCoefficients()
+		{
+			// Прежде деление падало, если у делимого были нулевые старшие коэффициенты.
+			var withZero = new Polynomial(1, 2, 3, 0);
+			var x = Polynomial.Up;
+			var afterArithmetic = (x*x*x - 1) - x*x*x + x*x;
+
+			Polynomial rem;
+			var quotient = Polynomial.DivRem(withZero, new Polynomial(1, 1), out rem);
+
+			Assert.True(quotient == new Polynomial(-1, 3));
+			Assert.True(rem == new Polynomial(2D));
+			Assert.True(afterArithmetic/new Polynomial(-1, 1) == new Polynomial(1, 1));
+			Assert.True(Polynomial.IsEmpty(afterArithmetic%new Polynomial(-1, 1)));
+			Assert.NotNull(new Polynomial(-1, 0, 1, 0).ResolveString);
+		}
+
+		[Fact]
+		public void GetDerivative_OrderAboveDegree_IsZero()
+		{
+			// Прежде создавался массив отрицательной длины (OverflowException).
+			Assert.True(Polynomial.IsEmpty(new Polynomial(1, 2).GetDerivative(3)));
+			Assert.True(Polynomial.IsEmpty(Polynomial.Empty.GetDerivative(2)));
+		}
+
+		[Fact]
 		public void Resolve_QuadraticWithDistinctRoots()
 		{
 			var roots = new Polynomial(2, -3, 1).Resolve();

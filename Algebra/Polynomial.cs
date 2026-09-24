@@ -1012,10 +1012,15 @@ namespace Ruzil3D.Algebra
 			return result;
 		}
 
-		private static Polynomial Div(ICollection<double> x, IList<double> y, int xDeg, int yDeg, out double[] rem)
+		private static Polynomial Div(IList<double> x, IList<double> y, int xDeg, int yDeg, out double[] rem)
 		{
+			//Копируем только значимые коэффициенты: массив делимого может содержать нулевые старшие
+			//коэффициенты, и прежде копирование всего массива выбрасывало исключение.
 			rem = new double[xDeg + 1];
-			x.CopyTo(rem,0);
+			for (var i = 0; i <= xDeg; i++)
+			{
+				rem[i] = x[i];
+			}
 
 			var degree = xDeg - yDeg;
 			var result = new double[degree + 1];
@@ -1533,14 +1538,15 @@ namespace Ruzil3D.Algebra
 		/// <returns>Многочлен представляющий производную от исходного.</returns>
 		public Polynomial GetDerivative(int order = 1)
 		{
-			if (A.Length == order)
-			{
-				return Empty;
-			}
-
 			if (order < 0)
 			{
 				throw new ArgumentException("Порядок производной не может быть отрицательным.", nameof(order));
+			}
+
+			//Производная порядка выше степени многочлена равна нулю (прежде создавался массив отрицательной длины).
+			if (order >= A.Length)
+			{
+				return Empty;
 			}
 
 			if (order == 0)

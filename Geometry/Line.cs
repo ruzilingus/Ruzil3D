@@ -143,6 +143,10 @@ namespace Ruzil3D.Geometry
 			return _isNormalized ? 1 : Math.Sqrt(A*A + B*B);
 		}
 
+		//Хотя бы один коэффициент не является числом (например, прямая построена по двум совпадающим точкам).
+		//Проверка нужна, потому что Math.Sign(NaN) выбрасывает исключение, и прежде падал даже ToString.
+		private bool HasNaN => double.IsNaN(A) || double.IsNaN(B) || double.IsNaN(C);
+
 		/// <summary>
 		/// Возвращает значение указывающее на пересечение данной прямой с указанным отрезком.
 		/// </summary>
@@ -165,7 +169,7 @@ namespace Ruzil3D.Geometry
 
 				double theta;
 
-				if (norm.Equals(0D) || double.IsNaN(norm))
+				if (norm.Equals(0D) || double.IsNaN(norm) || HasNaN)
 				{
 					theta = double.NaN;
 				}
@@ -196,7 +200,7 @@ namespace Ruzil3D.Geometry
 
 				double p;
 
-				if (norm.Equals(0D) || double.IsNaN(norm))
+				if (norm.Equals(0D) || double.IsNaN(norm) || HasNaN)
 				{
 					p = double.NaN;
 				}
