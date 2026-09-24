@@ -464,53 +464,97 @@ namespace Ruzil3D.Utility
 			return result1 ?? result2;
 		}
 
-		private static string DoubleToStringConstants(double value, int digits)
+		/// <summary>
+		/// Константа, кратные которой распознаёт <see cref="DoubleToStringConstants"/>.
+		/// </summary>
+		private struct NamedConstant
 		{
-			long denominator;
+			/// <summary>
+			/// Значение константы.
+			/// </summary>
+			public readonly double Value;
 
-			//По возрастанию меры иррациональности
+			/// <summary>
+			/// Обозначение константы.
+			/// </summary>
+			public readonly string Symbol;
 
-			var result =
-				//Единица
-				TryConvertToFraction(value, 1, digits, "1", true, out denominator) ??
+			/// <summary>
+			/// Десятичный логарифм значения константы.
+			/// </summary>
+			public readonly double Order;
+
+			public NamedConstant(double value, string symbol)
+			{
+				Value = value;
+				Symbol = symbol;
+				Order = GetOrder(value);
+			}
+		}
+
+		/// <summary>
+		/// Таблицы для <see cref="DoubleToStringConstants"/>. Строятся один раз при первом форматировании числа:
+		/// прежде степени, корни и строки обозначений констант вычислялись заново для каждого числа.
+		/// </summary>
+		private static class Tables
+		{
+			/// <summary>
+			/// Константы в порядке перебора (по возрастанию меры иррациональности).
+			/// </summary>
+			internal static readonly NamedConstant[] Constants = CreateConstants();
+
+			/// <summary>
+			/// Отметки частей [0, 1/2], близких к дробям со знаменателями до 999, для <see cref="IsFractionCandidate"/>.
+			/// </summary>
+			internal static readonly uint[] Fractions = CreateFractions();
+		}
+
+		private static NamedConstant[] CreateConstants()
+		{
+			var constants = new List<NamedConstant>
+			{
 				//ln 2
-				TryConvertConstant(value, Ln(2), "ln2", digits) ??
+				new NamedConstant(Ln(2), "ln2"),
 				//√π
-				TryConvertConstant(value, Sqrt(Pi), "√π", digits) ??
+				new NamedConstant(Sqrt(Pi), "√π"),
 				//√℮
-				TryConvertConstant(value, Sqrt(E), "√℮", digits) ??
+				new NamedConstant(Sqrt(E), "√℮"),
 				//√φ
-				TryConvertConstant(value, Sqrt(Fi), "√φ", digits);
+				new NamedConstant(Sqrt(Fi), "√φ")
+			};
 
 			//πⁿ
-			for (var i = 1; i <= 9 && result == null; i++)
+			for (var i = 1; i <= 9; i++)
 			{
-				result = i == 1
-					? TryConvertConstant(value, Pi, "π", digits)
-					: TryConvertConstant(value, Pow(Pi, i), "π" + SupIdx[i], digits);
+				constants.Add(i == 1
+					? new NamedConstant(Pi, "π")
+					: new NamedConstant(Pow(Pi, i), "π" + SupIdx[i]));
 			}
 
 			//℮ⁿ
-			for (var i = 1; i <= 9 && result == null; i++)
+			for (var i = 1; i <= 9; i++)
 			{
-				result = i == 1
-					? TryConvertConstant(value, E, "℮", digits)
-					: TryConvertConstant(value, Exp(i), "℮" + SupIdx[i], digits);
+				constants.Add(i == 1
+					? new NamedConstant(E, "℮")
+					: new NamedConstant(Exp(i), "℮" + SupIdx[i]));
 			}
 
 			//φⁿ
-			for (var i = 1; i <= 9 && result == null; i++)
+			for (var i = 1; i <= 9; i++)
 			{
-				result = i == 1
-					? TryConvertConstant(value, Fi, "φ", digits)
-					: TryConvertConstant(value, Pow(Fi, i), "φ" + SupIdx[i], digits);
+				constants.Add(i == 1
+					? new NamedConstant(Fi, "φ")
+					: new NamedConstant(Pow(Fi, i), "φ" + SupIdx[i]));
 			}
-			
+
 			//√n
+			//Проверка задумывалась как отбор чисел, свободных от квадратов, но squares содержит сами квадраты,
+			//поэтому пропускаются только кратные 4 от 16, кратные 9 от 81 и кратные 25 от 625, а, например, √8
+			//перебирается. Проверка сохранена, так как от неё зависит вывод: число 5001·√8/997 выводится как
+			//"5001√8/997", а без √8 выводилось бы "14.187527".
 			var squares = new List<int>();
-			for (var i = 2; i < 1000 && result == null; i++)
+			for (var i = 2; i < 1000; i++)
 			{
-				//Провверяем все свободные от квадратов числа.
 				if (squares.TakeWhile(num => num*num <= i).Any(num => i%num == 0))
 				{
 					continue;
@@ -524,10 +568,185 @@ namespace Ruzil3D.Utility
 					continue;
 				}
 
-				result = TryConvertConstant(value, sqrt, "√" + i, digits);
+				constants.Add(new NamedConstant(sqrt, "√" + i.ToString(CultureInfo.InvariantCulture)));
 			}
 
-			return result;
+			return constants.ToArray();
+		}
+
+		private static string DoubleToStringConstants(double value, int digits)
+		{
+			long denominator;
+
+			//Единица
+			var result = TryConvertToFraction(value, 1, digits, "1", true, out denominator);
+			if (result != null)
+			{
+				return result;
+			}
+
+			//Константа пропускается, только если TryConvertConstant для неё заведомо вернёт null, поэтому
+			//результат тот же, что при вызове TryConvertConstant для каждой константы. Прежде для обычного числа
+			//более 1300 раз перебирались все 500 знаменателей, и одно число форматировалось 1–5 мс.
+			var order = GetOrder(value);
+			var constants = Tables.Constants;
+			for (var i = 0; i < constants.Length; i++)
+			{
+				var constant = constants[i];
+				if (!MayConvert(value / constant.Value, order - constant.Order) &&
+				    !MayConvert(value * constant.Value, order + constant.Order))
+				{
+					continue;
+				}
+
+				result = TryConvertConstant(value, constant.Value, constant.Symbol, digits);
+				if (result != null)
+				{
+					return result;
+				}
+			}
+
+			return null;
+		}
+
+		/// <summary>
+		/// Проверяет, может ли <see cref="TryConvertToFraction"/> вернуть строку для числа number,
+		/// частного или произведения ненулевого числа и константы.
+		/// </summary>
+		/// <param name="number">Частное или произведение, вычисленное так же, как в <see cref="TryConvertToFraction"/>.</param>
+		/// <param name="order">Десятичный логарифм модуля number с погрешностью меньше 10⁻⁹.</param>
+		/// <returns>Значение <b>false</b>, только если <see cref="TryConvertToFraction"/> заведомо вернёт <b>null</b>.</returns>
+		/// <remarks>Здесь используется System.Math.Abs без ветвлений: результаты те же, что у <see cref="Math.Abs(double)"/>,
+		/// но непредсказуемый знак аргумента не замедляет проверку.</remarks>
+		private static bool MayConvert(double number, double order)
+		{
+			//То же условие, что в TryConvertToFraction: близкое к целому число выводится всегда.
+			if (System.Math.Abs(Round(number) - number) < 1E-13 * System.Math.Abs(number) && System.Math.Abs(number) > 1E-13)
+			{
+				return true;
+			}
+
+			//Порядок берётся с запасом вниз, поэтому мантисса равна мантиссе из GetRationalFraction или больше
+			//неё в 10 раз, если логарифм близок к целому. Ноль получается только при исчезновении порядка.
+			return !number.Equals(0D) && IsFractionCandidate(System.Math.Abs(number)*Exp10(-(int) Floor(order - 1E-9)));
+		}
+
+		/// <summary>
+		/// Наибольший знаменатель дроби (после сокращения), которую может найти <see cref="GetRationalFraction"/>.
+		/// </summary>
+		private const int MaxDenominator = 999;
+
+		/// <summary>
+		/// Число равных частей, на которые <see cref="Tables.Fractions"/> делит отрезок [0, 1/2].
+		/// </summary>
+		private const int FractionCells = 1 << 19;
+
+		/// <summary>
+		/// Знаменатель, до которого округляется дробная часть мантиссы в <see cref="IsFractionCandidate"/>: 2³².
+		/// </summary>
+		private const double FractionScale = 4294967296D;
+
+		/// <summary>
+		/// Проверяет, может ли <see cref="GetRationalFraction"/> найти дробь для числа с мантиссой m.
+		/// </summary>
+		/// <param name="mantissa">Число 10ʲ·m (j = 0 или 1) с относительной погрешностью до 2·10⁻¹⁵.</param>
+		/// <returns>Значение <b>false</b>, только если <see cref="GetRationalFraction"/> заведомо вернёт
+		/// <see cref="Fraction.NaN"/>.</returns>
+		/// <remarks>
+		/// <see cref="GetRationalFraction"/> находит знаменатель i от 500 до 999, для которого дробная часть i·m
+		/// не больше 10⁻¹⁴·i·m (m ≤ 10 с точностью до округления). Тогда для целого k |i·m − k| ≤ 2.02·10⁻¹⁰
+		/// (допуск и погрешность умножения при m ≤ 20) и |m − k/i| ≤ 4.04·10⁻¹³. Значит, проверяемое число
+		/// отличается от несократимой дроби P/Q = 10ʲ·k/i (Q ≤ 999) не больше чем на 4.4·10⁻¹², его дробная часть f —
+		/// от дроби со знаменателем Q, а 2f и 3f — от дробей со знаменателями не больше Q не больше чем на 1.4·10⁻¹¹.
+		/// Поэтому, если хотя бы одно из этих чисел не попадает в отмеченную часть [0, 1/2] (см.
+		/// <see cref="CreateFractions"/>), дробь не будет найдена. Так отсеивается более 90% чисел.
+		/// <para>Для остальных f округляется до 2⁻³², и получается число, отличающееся от дроби со знаменателем Q
+		/// не больше чем на 1.3·10⁻¹⁰. Это меньше 1/(2Q²), поэтому по теореме Лежандра эта дробь — подходящая дробь
+		/// цепной дроби числа, а так как две разные дроби со знаменателями до 999 отличаются больше чем на 10⁻⁶,
+		/// она единственная такая и совпадает с последней подходящей дробью со знаменателем до 999. Для неё
+		/// |10ʲ·m·Q − P| ≤ 4.4·10⁻⁹, поэтому при большем отклонении дробь не будет найдена. Подходящие дроби
+		/// вычисляются алгоритмом Евклида, где все числа — целые меньше 2⁵³, поэтому вычисления в double точны.</para>
+		/// </remarks>
+		private static bool IsFractionCandidate(double mantissa)
+		{
+			//Оценки получены для мантисс не больше 200; для остальных значений проверка не выполняется.
+			if (!(mantissa >= 0.5 && mantissa <= 200D))
+			{
+				return true;
+			}
+
+			var fractions = Tables.Fractions;
+			var fraction = mantissa - Floor(mantissa);
+			var doubled = 2*fraction;
+			var tripled = 3*fraction;
+			if (!IsNearFraction(fractions, fraction) ||
+			    !IsNearFraction(fractions, doubled - Floor(doubled)) ||
+			    !IsNearFraction(fractions, tripled - Floor(tripled)))
+			{
+				return false;
+			}
+
+			//Знаменатель последней подходящей дроби со знаменателем до 999 для дробной части num/2³².
+			var num = Floor(fraction*FractionScale + 0.5);
+			var den = FractionScale;
+			double q0 = 0, q1 = 1;
+
+			while (num > 0D)
+			{
+				var a = Floor(den/num);
+				var q2 = a*q1 + q0;
+				if (q2 > MaxDenominator)
+				{
+					break;
+				}
+
+				q0 = q1;
+				q1 = q2;
+
+				var rem = den - a*num;
+				den = num;
+				num = rem;
+			}
+
+			var product = mantissa*q1;
+			return System.Math.Abs(product - Floor(product + 0.5)) <= 1E-8;
+		}
+
+		/// <summary>
+		/// Проверяет, отмечена ли в <paramref name="fractions"/> часть [0, 1/2], в которую попадает число из [0, 1]
+		/// или дополняющее его до единицы (дроби p/q и 1 − p/q имеют один знаменатель).
+		/// </summary>
+		private static bool IsNearFraction(uint[] fractions, double value)
+		{
+			var folded = 0.5 - System.Math.Abs(0.5 - value);
+			var cell = Min((int) (folded*(2*FractionCells)), FractionCells - 1);
+			return (fractions[cell >> 5] & (1u << (cell & 31))) != 0;
+		}
+
+		/// <summary>
+		/// Отмечает части [0, 1/2] длиной 2⁻²⁰, отстоящие меньше чем на 10⁻¹⁰ от дробей p/q, где q ≤ 999.
+		/// </summary>
+		/// <returns>Битовая маска (64 КБ); отмечено около 29% частей.</returns>
+		private static uint[] CreateFractions()
+		{
+			const double delta = 1E-10;
+			var fractions = new uint[FractionCells/32];
+
+			for (var q = 1; q <= MaxDenominator; q++)
+			{
+				for (var p = 0; 2*p <= q; p++)
+				{
+					var value = (double) p/q;
+					var first = (int) Max(0D, Floor((value - delta)*(2*FractionCells)));
+					var last = (int) Min(FractionCells - 1D, Floor((value + delta)*(2*FractionCells)));
+					for (var cell = first; cell <= last; cell++)
+					{
+						fractions[cell >> 5] |= 1u << (cell & 31);
+					}
+				}
+			}
+
+			return fractions;
 		}
 
 		/// <summary>
