@@ -85,8 +85,9 @@ namespace Ruzil3D.Approximation
 		/// <summary>
 		/// Инициализирует новый экземпляр класса <see cref="CGridApproximation"/> из массива структур <see cref="PointD"/>.
 		/// </summary>
-		/// <param name="points">Массив структур <see cref="PointD"/>.</param>
-		/// <param name="check">Условие указывающее на необходимость проверить исходные данные на корректность.</param>
+		/// <param name="points">Массив структур <see cref="PointD"/>. Массив копируется.</param>
+		/// <param name="check">Условие указывающее на необходимость проверить исходные данные на корректность: отсортировать узлы по возрастанию X и удалить повторы.
+		/// При значении <b>false</b> узлы должны быть уже отсортированы по возрастанию X и иметь различные X, иначе значения аппроксимации неверны.</param>
 		/// <exception cref="ArgumentNullException">Значение параметра <paramref name="points"/> равно <b>null</b>.</exception>
 		/// <exception cref="ArgumentException">Задано меньше двух узлов или при проверке (<paramref name="check"/> = <b>true</b>) нескольким одинаковым аргументам X соответствуют разные значения Y.</exception>
 		protected CGridApproximation(PointD[] points, bool check = false)
@@ -96,7 +97,9 @@ namespace Ruzil3D.Approximation
 				throw new ArgumentNullException(nameof(points));
 			}
 
-			Points = check ? Format(points) : points;
+			//Массив копируется: прежде он хранился по ссылке, и после его изменения вызывающим кодом значения аппроксимации
+			//менялись, а границы области определения оставались прежними.
+			Points = check ? Format(points) : (PointD[]) points.Clone();
 			CheckLength(Points);
 
 			LArgument = Points[0].X;

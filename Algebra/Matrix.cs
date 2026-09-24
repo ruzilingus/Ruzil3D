@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Ruzil3D.Calculus;
 using Ruzil3D.Utility;
 
 namespace Ruzil3D.Algebra
@@ -7,6 +8,7 @@ namespace Ruzil3D.Algebra
 	/// <summary>
 	/// Представляет многомерную матрицу.
 	/// </summary>
+	/// <remarks>Строки матрицы могут иметь разную длину: отсутствующие элементы строки считаются нулевыми.</remarks>
 	public struct Matrix : ICloneable
 	{
 		#region Fields
@@ -16,18 +18,35 @@ namespace Ruzil3D.Algebra
 		/// </summary>
 		private readonly Vector[] _lines;
 
+		/// <summary>
+		/// Пустой массив строк, которым заменяется отсутствующий массив.
+		/// </summary>
+		private static readonly Vector[] NoLines = new Vector[0];
+
 		#endregion
 
 		#region Properties
 
 		/// <summary>
+		/// Получает массив строк матрицы.
+		/// </summary>
+		/// <remarks>У структуры, созданной по умолчанию (<c>default(Matrix)</c>, элемент нового массива), массива нет:
+		/// прежде любое обращение к ней выбрасывало <see cref="NullReferenceException"/>, теперь она равна <see cref="Empty"/>.</remarks>
+		private Vector[] Lines => _lines ?? NoLines;
+
+		/// <summary>
 		/// Получает или задает строку матрицы по индексу.
 		/// </summary>
 		/// <param name="index">Индекс строки матрицы.</param>
-		/// <returns>Строка матрицы под номером <paramref name="index"/> представленная структурой <see cref="Vector"/>.</returns>
+		/// <returns>Строка матрицы под номером <paramref name="index"/> представленная структурой <see cref="Vector"/>. Для индекса за пределами матрицы возвращается <see cref="Vector.Empty"/>.</returns>
+		/// <exception cref="IndexOutOfRangeException">При записи индекс находится за пределами матрицы.</exception>
 		public Vector this[int index]
 		{
-			get { return _lines.Length > index ? _lines[index] : Vector.Empty; }
+			get
+			{
+				var lines = Lines;
+				return lines.Length > index ? lines[index] : Vector.Empty;
+			}
 			set
 			{
 				/*
@@ -39,7 +58,7 @@ namespace Ruzil3D.Algebra
 				    //aCopy.CopyTo(A, 0);
 				}
 				 */
-				_lines[index] = value;
+				Lines[index] = value;
 
 			}
 		}
@@ -67,7 +86,7 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Получает количесво строк матрицы.
 		/// </summary>
-		public int Length => _lines.Length;
+		public int Length => Lines.Length;
 
 		/// <summary>
 		/// Возвращает значение, показывающее, является ли данная матрица нулевой.
@@ -111,7 +130,7 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Инициализирует новый экземпляр <see cref="Matrix"/> с указанными строками.
 		/// </summary>
-		/// <param name="lines">Строки матрицы.</param>
+		/// <param name="lines">Строки матрицы. Массив не копируется. Значение <b>null</b> соответствует матрице <see cref="Empty"/>.</param>
 		public Matrix(Vector[] lines)
 		{
 			_lines = lines;
@@ -236,7 +255,16 @@ namespace Ruzil3D.Algebra
 		/// <returns>Частное от деления <paramref name="x"/> на <paramref name="y"/>.</returns>
 		public static Matrix operator /(Matrix x, double y)
 		{
-			return x*(1D/y);
+			//Делим каждый элемент: прежде матрица умножалась на 1/y, что давало лишнюю ошибку округления,
+			//а при очень малом y 1/y переполнялось.
+			var result = new Matrix(new Vector[x.Length]);
+
+			for (var i = 0; i < x.Length; i++)
+			{
+				result[i] = x[i]/y;
+			}
+
+			return result;
 		}
 
 		/// <summary>
@@ -374,87 +402,48 @@ namespace Ruzil3D.Algebra
 		/// Возвращает матрицу, обратную текущей.
 		/// </summary>
 		/// <returns>Матрица, обратная текущей.</returns>
+		/// <remarks>
+		/// Обращается квадратная матрица из <see cref="Length"/> строк и стольких же столбцов: недостающие элементы строк считаются нулевыми, а элементы правее n-го столбца не учитываются.
+		/// Используется метод Гаусса с выбором главного элемента по столбцу. Матрица считается вырожденной, если ведущий элемент
+		/// не превосходит оценки накопленной в нём погрешности округления (так бывает у матриц с числом обусловленности порядка 1/(n·ε) и больше).
+		/// </remarks>
+		/// <exception cref="DivideByZeroException">Матрица вырожденная, в том числе численно.</exception>
 		public Matrix GetInverse()
 		{
-			var inverse = GetIdentity(Length);
-			var current = (Matrix) Clone();
+			var size = Length;
 
-			#region Прямая итерация (Превращаем в треугольную матрицу c единичной диагональю)
-
-			for (var i = 0; i < current.Length; i++)
+			//Прежде ведущим брался первый ненулевой элемент столбца без выбора главного, поэтому [[1e-20, 1], [1, 1]]
+			//обращалась неверно; вырожденность проверялась точным сравнением с нулём, и для вырожденной матрицы
+			//возвращались числа порядка 1e16; а каждое действие над строками создавало новые векторы
+			//(обращение матрицы 200×200 выделяло 155 МБ). Теперь система A·X = E решается на рабочих массивах.
+			var a = new double[size][];
+			var inverse = new double[size][];
+			for (var i = 0; i < size; i++)
 			{
-				#region Преобразования над строками. Для гарантии lines[i].A[i] != 0
-
-				//Ищем ближайшую строчку с ненулевым i-ым коэффициентом
-				var j = i;
-				Vector line;
-				do
+				var line = this[i];
+				var row = new double[size];
+				for (var j = 0; j < size; j++)
 				{
-					line = current[j];
-
-					// ReSharper disable once CompareOfFloatsByEqualityOperator
-					if (line[i] == 0)
-					{
-						j++;
-					}
-					else
-					{
-						break;
-					}
-				} while (j < current.Length);
-
-				if (j == current.Length)
-				{
-					//Если не нашли такую строчку
-					throw new DivideByZeroException("Матрица вырожденная");
-				}
-				else if (j != i)
-				{
-					//Если текущая строка с нулевым i-ым коэффициентом, то меняем строки местами
-					current[j] = current[i];
-					current[i] = line;
-
-					//То же самое проделываем со второй матрицей
-					var save = inverse[j];
-					inverse[j] = inverse[i];
-					inverse[i] = save;
+					row[j] = line[j];
 				}
 
-				#endregion
-
-				//Нормируем строчку i. 
-				var norm = current[i, i];
-				current[i] /= norm;
-				inverse[i] /= norm;
-
-				for (j = i + 1; j < current.Length; j++)
-				{
-					norm = -current[j, i];
-					current[j] += norm*current[i];
-					inverse[j] += norm*inverse[i];
-				}
+				a[i] = row;
+				inverse[i] = new double[size];
+				inverse[i][i] = 1;
 			}
 
-			#endregion
-
-			#region Обратная итерация (Превращаем в единичную матрицу)
-
-			for (var i = current.Length - 1; i > 0; i--)
+			if (!LinearSystem.Solve(a, inverse))
 			{
-				for (var j = i - 1; j >= 0; j--)
-				{
-					var norm = -current[j, i];
-					inverse[j] += norm*inverse[i];
-
-					//Необязательно, просто для наглядности
-					//current[j,i] = 0;
-				}
+				throw new DivideByZeroException("Матрица вырожденная");
 			}
 
-			#endregion
+			var lines = new Vector[size];
+			for (var i = 0; i < size; i++)
+			{
+				lines[i] = new Vector(inverse[i]);
+			}
 
-
-			return inverse;
+			return new Matrix(lines);
 		}
 
 		#endregion
@@ -530,7 +519,28 @@ namespace Ruzil3D.Algebra
 		/// <returns>
 		/// 32-разрядное целое число со знаком, являющееся хэш-кодом для данного экземпляра.
 		/// </returns>
-		public override int GetHashCode() => 0;
+		/// <remarks>Хэш-код согласован с оператором <see cref="operator ==(Matrix, Matrix)"/>: нулевые строки в конце не учитываются.</remarks>
+		public override int GetHashCode()
+		{
+			//Прежде хэш-код всегда был равен 0. Нулевые строки в конце пропускаются, так как они не влияют на равенство матриц.
+			var length = Length;
+			while (length > 0 && this[length - 1] == Vector.Empty)
+			{
+				length--;
+			}
+
+			unchecked
+			{
+				//Ненулевое начальное значение: иначе нулевые строки в начале не влияли бы на хэш-код.
+				var hashCode = 1;
+				for (var i = 0; i < length; i++)
+				{
+					hashCode = (hashCode*401) ^ this[i].GetHashCode();
+				}
+
+				return hashCode;
+			}
+		}
 
 		#endregion
 
@@ -540,10 +550,20 @@ namespace Ruzil3D.Algebra
 		/// Создает новый объект, который является копией текущего экземпляра.
 		/// </summary>
 		/// <returns>
-		/// Новый объект, являющийся копией этого экземпляра.
+		/// Новый объект, являющийся копией этого экземпляра: строки копируются, поэтому изменение копии не меняет исходную матрицу.
 		/// </returns>
 		/// <filterpriority>2</filterpriority>
-		public object Clone() => new Matrix(_lines.Clone() as Vector[]);
+		public object Clone()
+		{
+			//Копируем и строки: прежде копировался только массив строк, и копия делила строки с исходной матрицей.
+			var lines = new Vector[Length];
+			for (var i = 0; i < lines.Length; i++)
+			{
+				lines[i] = (Vector) this[i].Clone();
+			}
+
+			return new Matrix(lines);
+		}
 
 		#endregion
 	}

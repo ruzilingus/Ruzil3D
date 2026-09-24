@@ -14,33 +14,52 @@ namespace Ruzil3D.Algebra
 		private readonly double[] _a;
 
 		/// <summary>
+		/// Пустой массив коэффициентов, которым заменяется отсутствующий массив.
+		/// </summary>
+		private static readonly double[] NoCoefficients = new double[0];
+
+		/// <summary>
+		/// Получает массив коэффициентов вектора.
+		/// </summary>
+		/// <remarks>У структуры, созданной по умолчанию (<c>default(Vector)</c>, элемент нового массива), массива нет:
+		/// прежде любое обращение к ней выбрасывало <see cref="NullReferenceException"/>, теперь она равна <see cref="Empty"/>.</remarks>
+		private double[] Coefficients => _a ?? NoCoefficients;
+
+		/// <summary>
 		/// Представляет нулевой вектор.
 		/// </summary>
 		public static readonly Vector Empty = new Vector(new double[0]);
 
 		/// <summary>
-		/// Получает или задает коэффициент первого члена вектора.
+		/// Получает коэффициент первого члена вектора.
 		/// </summary>
-		public double X => _a[0];
+		/// <remarks>Для вектора без элементов возвращается 0, как и для отсутствующих членов в <see cref="Y"/> и <see cref="Z"/>
+		/// (прежде выбрасывалось исключение <see cref="IndexOutOfRangeException"/>).</remarks>
+		public double X => this[0];
 
 		/// <summary>
-		/// Получает или задает коэффициент второго члена вектора.
+		/// Получает коэффициент второго члена вектора.
 		/// </summary>
-		public double Y => _a.Length > 1 ? _a[1] : 0;
+		public double Y => this[1];
 
 		/// <summary>
-		/// Получает или задает коэффициент третьего члена вектора.
+		/// Получает коэффициент третьего члена вектора.
 		/// </summary>
-		public double Z => _a.Length > 2 ? _a[2] : 0;
+		public double Z => this[2];
 
 		/// <summary>
 		/// Получает или задает коэффициент вектора соответствующий индексу.
 		/// </summary>
 		/// <param name="index">Индекс члена.</param>
-		/// <returns>Коэффициент вектора соответствующий индексу заданного параметром <paramref name="index"/>.</returns>
+		/// <returns>Коэффициент вектора соответствующий индексу заданного параметром <paramref name="index"/>. Для индекса за пределами вектора возвращается 0.</returns>
+		/// <exception cref="IndexOutOfRangeException">При записи индекс находится за пределами вектора.</exception>
 		public double this[int index]
 		{
-			get { return _a.Length > index ? _a[index] : 0; }
+			get
+			{
+				var a = Coefficients;
+				return a.Length > index ? a[index] : 0;
+			}
 			set
 			{
 				/*
@@ -52,7 +71,7 @@ namespace Ruzil3D.Algebra
 				    //aCopy.CopyTo(A, 0);
 				}
 				 */
-				_a[index] = value;
+				Coefficients[index] = value;
 
 			}
 		}
@@ -60,7 +79,7 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Возвращает количество элементов вектора.
 		/// </summary>
-		public int Length => _a.Length;
+		public int Length => Coefficients.Length;
 
 		/// <summary>
 		/// Возвращает значение, показывающее, являтся ли данный вектор нулевым.
@@ -76,7 +95,7 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Инициализирует новый экземпляр структуры <see cref="Vector"/> из массива структур <see cref="double"/> представляющий коэффициенты членов.
 		/// </summary>
-		/// <param name="a">Массив коэффициентов членов.</param>
+		/// <param name="a">Массив коэффициентов членов. Массив не копируется. Значение <b>null</b> соответствует вектору <see cref="Empty"/>.</param>
 		public Vector(double[] a)
 		{
 			_a = a;
@@ -154,15 +173,15 @@ namespace Ruzil3D.Algebra
 		public static bool operator ==(Vector x, Vector y)
 		{
 			double[] xArray, yArray;
-			if (x._a.Length < y._a.Length)
+			if (x.Length < y.Length)
 			{
-				xArray = x._a;
-				yArray = y._a;
+				xArray = x.Coefficients;
+				yArray = y.Coefficients;
 			}
 			else
 			{
-				xArray = y._a;
-				yArray = x._a;
+				xArray = y.Coefficients;
+				yArray = x.Coefficients;
 			}
 
 			for (var i = xArray.Length; i < yArray.Length; i++)
@@ -212,11 +231,12 @@ namespace Ruzil3D.Algebra
 		/// <returns>Результат умножения исходного вектора на -1.</returns>
 		public static Vector operator -(Vector x)
 		{
-			var a = new double[x._a.Length];
+			var xArray = x.Coefficients;
+			var a = new double[xArray.Length];
 
-			for (var i = 0; i < x._a.Length; i++)
+			for (var i = 0; i < xArray.Length; i++)
 			{
-				a[i] = -x._a[i];
+				a[i] = -xArray[i];
 			}
 
 			return new Vector(a);
@@ -241,11 +261,12 @@ namespace Ruzil3D.Algebra
 		/// <returns>Произведение <paramref name="x"/> и <paramref name="y"/>.</returns>
 		public static Vector operator *(Vector x, double y)
 		{
-			var a = new double[x._a.Length];
+			var xArray = x.Coefficients;
+			var a = new double[xArray.Length];
 
-			for (var i = 0; i < x._a.Length; i++)
+			for (var i = 0; i < xArray.Length; i++)
 			{
-				a[i] = x._a[i]*y;
+				a[i] = xArray[i]*y;
 			}
 
 			return new Vector(a);
@@ -270,7 +291,17 @@ namespace Ruzil3D.Algebra
 		/// <returns>Частное от деления <paramref name="x"/> на <paramref name="y"/>.</returns>
 		public static Vector operator /(Vector x, double y)
 		{
-			return x*(1/y);
+			//Делим каждый элемент: прежде вектор умножался на 1/y, что давало лишнюю ошибку округления
+			//(3/5 = 0.6000000000000001), а при очень малом y 1/y переполнялось (0/1e-310 = NaN).
+			var xArray = x.Coefficients;
+			var a = new double[xArray.Length];
+
+			for (var i = 0; i < xArray.Length; i++)
+			{
+				a[i] = xArray[i]/y;
+			}
+
+			return new Vector(a);
 		}
 
 		/// <summary>
@@ -282,15 +313,15 @@ namespace Ruzil3D.Algebra
 		public static Vector operator +(Vector x, Vector y)
 		{
 			double[] xArray, yArray;
-			if (x._a.Length < y._a.Length)
+			if (x.Length < y.Length)
 			{
-				xArray = x._a;
-				yArray = y._a;
+				xArray = x.Coefficients;
+				yArray = y.Coefficients;
 			}
 			else
 			{
-				xArray = y._a;
-				yArray = x._a;
+				xArray = y.Coefficients;
+				yArray = x.Coefficients;
 			}
 
 			var result = new double[yArray.Length];
@@ -361,14 +392,15 @@ namespace Ruzil3D.Algebra
 		public override string ToString()
 		{
 			var result = "";
+			var a = Coefficients;
 
 			//Черточка вектора
 			var vector = "x" + Macron;
 
-			for (var i = 0; i < _a.Length; i++)
+			for (var i = 0; i < a.Length; i++)
 			{
 				var val = vector + GetIndex(i + 1);
-				AddLinearItem(ref result, _a[i], val);
+				AddLinearItem(ref result, a[i], val);
 			}
 
 			return result == "" ? "Ø" : result;
@@ -383,7 +415,7 @@ namespace Ruzil3D.Algebra
 		/// </returns>
 		public object Clone()
 		{
-			return new Vector(_a.Clone() as double[]);
+			return new Vector(Coefficients.Clone() as double[]);
 		}
 
 		#endregion
@@ -419,9 +451,52 @@ namespace Ruzil3D.Algebra
 		/// <returns>
 		/// 32-разрядное целое число со знаком, являющееся хэш-кодом для данного экземпляра.
 		/// </returns>
+		/// <remarks>Хэш-код согласован с оператором <see cref="operator ==(Vector, Vector)"/>: нулевые элементы в конце не учитываются.</remarks>
 		public override int GetHashCode()
 		{
-			return 0;
+			//Прежде хэш-код всегда был равен 0, и хэш-таблицы с векторами работали за квадратичное время.
+			//Нули в конце пропускаются, так как векторы (1, 2) и (1, 2, 0) равны.
+			var a = Coefficients;
+			var length = a.Length;
+			while (length > 0 && a[length - 1] == 0)
+			{
+				length--;
+			}
+
+			unchecked
+			{
+				//Ненулевое начальное значение: иначе нули в начале не влияли бы на хэш-код, и (0, 0, 1), (0, 1) и (1) совпадали бы.
+				var hashCode = 1;
+				for (var i = 0; i < length; i++)
+				{
+					hashCode = (hashCode*397) ^ GetValueHashCode(a[i]);
+				}
+
+				return hashCode;
+			}
+		}
+
+		/// <summary>
+		/// Возвращает хэш-код числа, согласованный с <see cref="double.Equals(double)"/>.
+		/// </summary>
+		/// <param name="value">Число.</param>
+		/// <returns>Хэш-код числа: одинаковый для +0 и −0, а также для всех значений NaN.</returns>
+		internal static int GetValueHashCode(double value)
+		{
+			//+0 и −0 равны, все NaN тоже равны между собой, но их двоичные представления различаются,
+			//а double.GetHashCode в .NET Framework не приводит NaN к одному значению.
+			if (value == 0)
+			{
+				return 0;
+			}
+
+			if (double.IsNaN(value))
+			{
+				return int.MinValue;
+			}
+
+			var bits = BitConverter.DoubleToInt64Bits(value);
+			return unchecked((int) bits ^ (int) (bits >> 32));
 		}
 
 		#endregion

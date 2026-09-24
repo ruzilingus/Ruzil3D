@@ -12,12 +12,25 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Коээффциенты линейной комбинации.
 		/// </summary>
+		/// <remarks>У структуры, созданной по умолчанию, значение равно <b>null</b>; такое уравнение считается уравнением без коэффициентов.</remarks>
 		public readonly double[] A;
 		
 		/// <summary>
 		/// Значение линейной комбинации.
 		/// </summary>
 		public double Y;
+
+		/// <summary>
+		/// Пустой массив коэффициентов, которым заменяется отсутствующий массив.
+		/// </summary>
+		private static readonly double[] NoCoefficients = new double[0];
+
+		/// <summary>
+		/// Получает коэффициенты линейной комбинации.
+		/// </summary>
+		/// <remarks>У структуры, созданной по умолчанию (<c>default(Linear)</c>, элемент нового массива), массива нет:
+		/// прежде любое обращение к ней выбрасывало <see cref="NullReferenceException"/>, теперь она равна уравнению 0 = 0.</remarks>
+		private double[] Coefficients => A ?? NoCoefficients;
 
 		/// <summary>
 		/// Инициализирует новый экземпляр класса <see cref="Linear"/> представленный коэффициентами линейной комбинации <paramref name="a"/> и значением <paramref name="y"/>.
@@ -37,7 +50,7 @@ namespace Ruzil3D.Algebra
 		/// <returns>Результат умножения линейного уравнения <paramref name="linear"/> на -1.</returns>
 		public static Linear operator -(Linear linear)
 		{
-			return new Linear(linear.A.Select(item => -item).ToArray(), -linear.Y);
+			return new Linear(linear.Coefficients.Select(item => -item).ToArray(), -linear.Y);
 		}
 
 		/// <summary>
@@ -59,7 +72,7 @@ namespace Ruzil3D.Algebra
 		/// <returns>Произведение <paramref name="linear"/> и <paramref name="x"/>.</returns>
 		public static Linear operator *(Linear linear, double x)
 		{
-			return new Linear(linear.A.Select(item => x*item).ToArray(), x*linear.Y);
+			return new Linear(linear.Coefficients.Select(item => x*item).ToArray(), x*linear.Y);
 		}
 
 		/// <summary>
@@ -81,7 +94,9 @@ namespace Ruzil3D.Algebra
 		/// <returns>Частное от деления <paramref name="linear"/> на <paramref name="x"/>.</returns>
 		public static Linear operator /(Linear linear, double x)
 		{
-			return linear*(1/x);
+			//Делим каждый коэффициент: прежде уравнение умножалось на 1/x, что давало лишнюю ошибку округления,
+			//а при очень малом x 1/x переполнялось.
+			return new Linear(linear.Coefficients.Select(item => item/x).ToArray(), linear.Y/x);
 		}
 
 		/// <summary>
@@ -93,15 +108,15 @@ namespace Ruzil3D.Algebra
 		public static Linear operator +(Linear x, Linear y)
 		{
 			double[] xArray, yArray;
-			if (x.A.Length < y.A.Length)
+			if (x.Coefficients.Length < y.Coefficients.Length)
 			{
-				xArray = x.A;
-				yArray = y.A;
+				xArray = x.Coefficients;
+				yArray = y.Coefficients;
 			}
 			else
 			{
-				xArray = y.A;
-				yArray = x.A;
+				xArray = y.Coefficients;
+				yArray = x.Coefficients;
 			}
 
 			var result = new double[yArray.Length];
@@ -161,14 +176,16 @@ namespace Ruzil3D.Algebra
 		/// <returns>true, если текущий объект равен параметру <paramref name="other"/>, в противном случае — false.</returns>
 		public bool Equals(Linear other)
 		{
-			if (!Y.Equals(other.Y) || A.Length != other.A.Length)
+			var a = Coefficients;
+			var otherA = other.Coefficients;
+			if (!Y.Equals(other.Y) || a.Length != otherA.Length)
 			{
 				return false;
 			}
 
-			for (var i = 0; i < A.Length; i++)
+			for (var i = 0; i < a.Length; i++)
 			{
-				if (!A[i].Equals(other.A[i]))
+				if (!a[i].Equals(otherA[i]))
 				{
 					return false;
 				}
@@ -197,9 +214,21 @@ namespace Ruzil3D.Algebra
 		/// 32-разрядное целое число со знаком, являющееся хэш-кодом для данного экземпляра.
 		/// </returns>
 		/// <filterpriority>2</filterpriority>
+		/// <remarks>Хэш-код согласован с <see cref="Equals(Linear)"/>: учитываются значение, число и значения коэффициентов.</remarks>
 		public override int GetHashCode()
 		{
-			return 0;
+			//Прежде хэш-код всегда был равен 0, и хэш-таблицы с уравнениями работали за квадратичное время.
+			var a = Coefficients;
+			unchecked
+			{
+				var hashCode = (Vector.GetValueHashCode(Y)*397) ^ a.Length;
+				for (var i = 0; i < a.Length; i++)
+				{
+					hashCode = (hashCode*397) ^ Vector.GetValueHashCode(a[i]);
+				}
+
+				return hashCode;
+			}
 		}
 
 		#endregion
@@ -219,17 +248,18 @@ namespace Ruzil3D.Algebra
 		{
 			//Ключ кэша строится по значениям: структура делит изменяемый массив A с копиями,
 			//поэтому прежний ключ (сама структура) менялся вместе с ним.
-			var key = CStatic.GetToStringHashKey(nameof(Linear), null, A.Concat(new[] {Y}));
+			var a = Coefficients;
+			var key = CStatic.GetToStringHashKey(nameof(Linear), null, a.Concat(new[] {Y}));
 
 			var result = CStatic.GetToStringHashValue(key);
 			if (result != null) return result;
 			result = "";
 
 
-			for (var i = 0; i < A.Length; i++)
+			for (var i = 0; i < a.Length; i++)
 			{
 				var sym = "x" + CStatic.GetIndex(i + 1);
-				CStatic.AddLinearItem(ref result, A[i], sym);
+				CStatic.AddLinearItem(ref result, a[i], sym);
 			}
 			result = result == "" ? "0" : result;
 			result += " = " + CStatic.DoubleToString(Y);
