@@ -6,9 +6,10 @@ using Ruzil3D.Algebra;
 namespace Ruzil3D.Curves
 {
 	/// <summary>
-	/// NURBS кривые заданных полиномами Бернштейна.
+	/// Кривые Безье произвольной степени, заданные узловыми точками и многочленами Бернштейна.
 	/// </summary>
-	/// <remarks>Назван в честь Сергеея Натановича Бернштейна.</remarks>
+	/// <remarks>Названы в честь Сергея Натановича Бернштейна. Степень кривой на единицу меньше количества узловых точек,
+	/// параметр кривой меняется от 0 до 1.</remarks>
 	public class BernsteinCurve : ParametricCurve
 	{
 		#region Fields
@@ -131,6 +132,125 @@ namespace Ruzil3D.Curves
 			}
 
 			return result;
+		}
+
+		/// <summary>
+		/// Проверяет, что параметр кривой принадлежит отрезку [0, 1].
+		/// </summary>
+		/// <param name="parameter">Параметр кривой.</param>
+		/// <exception cref="ArgumentOutOfRangeException">Параметр меньше 0 или больше 1.</exception>
+		private static void CheckParameter(double parameter)
+		{
+			//Прежде GetValue выбрасывал ArgumentException без имени параметра, а GetTangent и GetCurvature принимали любые
+			//значения. Теперь все методы одинаково выбрасывают ArgumentOutOfRangeException (наследник ArgumentException).
+			if (parameter < 0 || parameter > 1)
+			{
+				throw new ArgumentOutOfRangeException(nameof(parameter), parameter,
+					"Параметр \"" + nameof(parameter) + "\" должен быть от 0 до 1.");
+			}
+		}
+
+		//Узловые точки производных кривой (годографов), умноженные на биномиальные коэффициенты; индекс — порядок производной.
+		private Point3D[][] _derivativePoints;
+
+		/// <summary>
+		/// Возвращает узловые точки производной заданного порядка, умноженные на биномиальные коэффициенты.
+		/// </summary>
+		/// <param name="order">Порядок производной от 1 до степени кривой.</param>
+		/// <returns>Точки C(m, i)·Dᵢ, где Dᵢ — узловые точки производной как кривой Безье степени m.</returns>
+		private Point3D[] GetDerivativePoints(int order)
+		{
+			var result = _derivativePoints;
+
+			if (result == null)
+			{
+				var degree = Points.Length - 1;
+				var points = new Point3D[Points.Length];
+				Points.CopyTo(points, 0);
+
+				result = new Point3D[Points.Length][];
+
+				for (var k = 1; k <= degree; k++)
+				{
+					//Узловые точки производной порядка k: n·(n − 1)·…·(n − k + 1)·Δᵏ Pᵢ.
+					var count = degree - k + 1;
+					for (var i = 0; i < count; i++)
+					{
+						points[i] = (points[i + 1] - points[i])*count;
+					}
+
+					var scaled = new Point3D[count];
+					var binomial = 1D;
+					for (var i = 0; i < count; i++)
+					{
+						scaled[i] = points[i]*binomial;
+						binomial = binomial*(count - 1 - i)/(i + 1);
+					}
+
+					result[k] = scaled;
+				}
+
+				_derivativePoints = result;
+			}
+
+			return result[order];
+		}
+
+		/// <summary>
+		/// Возвращает производную кривой заданного порядка, вычисленную по разностям узловых точек.
+		/// </summary>
+		/// <param name="order">Порядок производной, не меньше 1.</param>
+		/// <param name="parameter">Параметр кривой.</param>
+		/// <returns>Вектор производной, представленный структурой <see cref="Point3D"/>.</returns>
+		/// <remarks>Производная вычисляется в базисе Бернштейна, поэтому при <i>t</i> = 0 и <i>t</i> = 1 результат точно равен
+		/// соответствующей разности крайних узловых точек, например <i>n</i>·(<i>P</i>ₙ − <i>P</i>ₙ₋₁) для первой производной
+		/// в конце кривой.</remarks>
+		private Point3D GetDerivative(int order, double parameter)
+		{
+			if (order >= Points.Length)
+			{
+				return Point3D.Empty;
+			}
+
+			var points = GetDerivativePoints(order);
+			var degree = points.Length - 1;
+			var u = 1 - parameter;
+
+			//Схема Горнера для многочлена в базисе Бернштейна: Σ C(m, i)·Dᵢ·tⁱ·(1 − t)ᵐ⁻ⁱ равна (1 − t)ᵐ·Σ C(m, i)·Dᵢ·sⁱ
+			//при s = t/(1 − t) и tᵐ·Σ C(m, i)·Dᵢ·sᵐ⁻ⁱ при s = (1 − t)/t; выбирается вариант с s ≤ 1.
+			Point3D result;
+			double scale;
+			double power = 1;
+
+			if (parameter < 0.5)
+			{
+				var s = parameter/u;
+				result = points[degree];
+				for (var i = degree - 1; i >= 0; i--)
+				{
+					result = result*s + points[i];
+				}
+
+				scale = u;
+			}
+			else
+			{
+				var s = u/parameter;
+				result = points[0];
+				for (var i = 1; i <= degree; i++)
+				{
+					result = result*s + points[i];
+				}
+
+				scale = parameter;
+			}
+
+			for (var i = 0; i < degree; i++)
+			{
+				power *= scale;
+			}
+
+			return result*power;
 		}
 
 		#endregion
@@ -337,10 +457,42 @@ namespace Ruzil3D.Curves
 		/// Разбивиет кривую на два в заданной произвольным параметром точке и заполняет массивы струтур <see cref="Point3D"/>.
 		/// </summary>
 		/// <param name="parameter">Параметр точки разбиения кривой.</param>
-		/// <param name="points1">Массив узловых точек из струтур <see cref="Point3D"/> для первой кривой.</param>
-		/// <param name="points2">Массив узловых точек из струтур <see cref="Point3D"/> для второй кривой.</param>
+		/// <param name="points1">Массив узловых точек из струтур <see cref="Point3D"/> для первой кривой. Длина массива должна равняться количеству узловых точек кривой.</param>
+		/// <param name="points2">Массив узловых точек из струтур <see cref="Point3D"/> для второй кривой. Длина массива должна равняться количеству узловых точек кривой.</param>
+		/// <exception cref="ArgumentNullException">Параметр <paramref name="points1"/> или <paramref name="points2"/> имеет значение <b>null</b>.</exception>
+		/// <exception cref="ArgumentException">Длина массива <paramref name="points1"/> или <paramref name="points2"/> не равна количеству узловых точек кривой, либо это один и тот же массив.</exception>
 		public void SplitPoints(double parameter, Point3D[] points1, Point3D[] points2)
 		{
+			if (points1 == null)
+			{
+				throw new ArgumentNullException(nameof(points1));
+			}
+
+			if (points2 == null)
+			{
+				throw new ArgumentNullException(nameof(points2));
+			}
+
+			//Прежде степень кривой бралась из длины массива points1: для массивов другой длины точки разбиения
+			//получались неверными (например, для массивов из пяти точек кубическая кривая делилась не в той точке).
+			if (points1.Length != Points.Length)
+			{
+				throw new ArgumentException("Длина массива должна равняться количеству узловых точек кривой (" + Points.Length + ").",
+					nameof(points1));
+			}
+
+			if (points2.Length != Points.Length)
+			{
+				throw new ArgumentException("Длина массива должна равняться количеству узловых точек кривой (" + Points.Length + ").",
+					nameof(points2));
+			}
+
+			//Массивы заполняются одновременно, поэтому общий массив дал бы бессмысленный результат.
+			if (ReferenceEquals(points1, points2))
+			{
+				throw new ArgumentException("Для двух частей кривой нужны разные массивы.", nameof(points2));
+			}
+
 			Points.CopyTo(points1, 0);
 
 			var u = 1 - parameter;
@@ -361,37 +513,34 @@ namespace Ruzil3D.Curves
 		/// <param name="t0">Параметр начала участка кривой.</param>
 		/// <param name="t1">Параметр конца участка кривой.</param>
 		/// <returns>Массив узловых точек из струтур <see cref="Point3D"/> для участка кривой.</returns>
+		/// <remarks>Если <paramref name="t0"/> больше <paramref name="t1"/>, участок проходится в обратном направлении.</remarks>
 		public Point3D[] GetPartPoints(double t0, double t1)
 		{
+			//Узловые точки участка [t0, t1] — значения полярной формы (блоссома) кривой: Qₖ = B(t0, …, t0, t1, …, t1),
+			//где t1 повторяется k раз. Прежде участок вычислялся двумя делениями, второе — в точке (t1 − t0)/(1 − t0):
+			//при t0 = 1 получалось деление на ноль и точки NaN, а при t0, близком к 1, — большая потеря точности.
+			var max = Points.Length - 1;
+			var result = new Point3D[Points.Length];
 			var points = new Point3D[Points.Length];
-			Points.CopyTo(points, 0);
 
-			var max = points.Length - 1;
-
-			if (!t0.Equals(0D))
+			for (var k = 0; k <= max; k++)
 			{
-				var u = t0;
+				Points.CopyTo(points, 0);
+
 				for (var i = 0; i < max; i++)
 				{
+					var u = i < k ? t1 : t0;
+					var v = 1 - u;
 					for (var j = 0; j < max - i; j++)
 					{
-						points[j] += (points[j + 1] - points[j])*u;
+						points[j] = points[j]*v + points[j + 1]*u;
 					}
 				}
+
+				result[k] = points[0];
 			}
 
-			if (!t1.Equals(1D))
-			{
-				var u = 1 - (t1 - t0)/(1D - t0);
-				for (var i = 0; i < max; i++)
-				{
-					for (var j = max; j > i; j--)
-					{
-						points[j] += (points[j - 1] - points[j])*u;
-					}
-				}
-			}
-			return points;
+			return result;
 		}
 
 		#endregion
@@ -401,14 +550,12 @@ namespace Ruzil3D.Curves
 		/// <summary>
 		/// Возвращает точку на кривой соответствующую параметру.
 		/// </summary>
-		/// <param name="parameter">Параметр кривой.</param>
+		/// <param name="parameter">Параметр кривой от 0 до 1.</param>
 		/// <returns>Координаты точки на кривой представленой структурой <see cref="Point3D"/>.</returns>
+		/// <exception cref="ArgumentOutOfRangeException">Параметр <paramref name="parameter"/> меньше 0 или больше 1.</exception>
 		public override Point3D GetValue(double parameter)
 		{
-			if (parameter < 0 || parameter > 1)
-			{
-				throw new ArgumentException("Атрибут \"" + nameof(parameter) + "\" должен быть от 0 до 1.");
-			}
+			CheckParameter(parameter);
 
 			return new Point3D(PolynomX0.GetValue(parameter), PolynomY0.GetValue(parameter), PolynomZ0.GetValue(parameter));
 		}
@@ -416,11 +563,19 @@ namespace Ruzil3D.Curves
 		/// <summary>
 		/// Возвращает вектор касательной к кривой в заданной произвольным параметром точке.
 		/// </summary>
-		/// <param name="parameter">Параметр кривой.</param>
-		/// <returns>Значение вектора касательной представленный структурой <see cref="Point3D"/>.</returns>
+		/// <param name="parameter">Параметр кривой от 0 до 1.</param>
+		/// <returns>Единичный вектор касательной, направленный в сторону возрастания параметра, представленный структурой <see cref="Point3D"/>.</returns>
+		/// <exception cref="ArgumentOutOfRangeException">Параметр <paramref name="parameter"/> меньше 0 или больше 1.</exception>
+		/// <remarks>В особой точке, где первая производная равна нулю, направление касательной задаёт первая ненулевая
+		/// производная старшего порядка; в конечной точке кривой (<paramref name="parameter"/> = 1) возвращается левая касательная.</remarks>
 		public override Point3D GetTangent(double parameter)
 		{
-			var result = new Point3D(PolynomX1.GetValue(parameter), PolynomY1.GetValue(parameter), PolynomZ1.GetValue(parameter));
+			CheckParameter(parameter);
+
+			//Производные вычисляются по разностям узловых точек, а не по многочленам в степенном базисе: прежде в конце
+			//кривой с совпадающими последними узлами (P2 = P3) первая производная получалась не нулевой, а порядка 1e-15,
+			//особая точка не распознавалась, и касательная имела случайное направление.
+			var result = GetDerivative(1, parameter);
 
 			//Точка сингулярности.
 			if (result == Point3D.Empty)
@@ -428,10 +583,7 @@ namespace Ruzil3D.Curves
 				var order = 2;
 				while (result == Point3D.Empty && order < Points.Length)
 				{
-					result = new Point3D(
-						GetXPolynom(order).GetValue(parameter),
-						GetYPolynom(order).GetValue(parameter),
-						GetZPolynom(order).GetValue(parameter));
+					result = GetDerivative(order, parameter);
 
 					order++;
 				}
@@ -476,16 +628,19 @@ namespace Ruzil3D.Curves
 		/// <summary>
 		/// Возвращает вектор кривизны к кривой в заданной произвольным параметром точке.
 		/// </summary>
-		/// <param name="parameter">Параметр кривой.</param>
+		/// <param name="parameter">Параметр кривой от 0 до 1.</param>
 		/// <returns>Значение вектора кривизны представленный структурой <see cref="Point3D"/>.</returns>
+		/// <exception cref="ArgumentOutOfRangeException">Параметр <paramref name="parameter"/> меньше 0 или больше 1.</exception>
 		/// <remarks>Псевдовектор кривизны направлен перпендикулярно к плоскости образованной векторами нормали и касательной.</remarks>
 		public override Point3D GetCurvature(double parameter)
 		{
+			CheckParameter(parameter);
+
 			//Первая производная
-			var v1 = new Point3D(PolynomX1.GetValue(parameter), PolynomY1.GetValue(parameter), PolynomZ1.GetValue(parameter));
+			var v1 = GetDerivative(1, parameter);
 
 			//Вторая производная
-			var v2 = new Point3D(PolynomX2.GetValue(parameter), PolynomY2.GetValue(parameter), PolynomZ2.GetValue(parameter));
+			var v2 = GetDerivative(2, parameter);
 
 			var len = v1.Length;
 
@@ -507,15 +662,66 @@ namespace Ruzil3D.Curves
 		/// <returns>Производная от функции выпрямления.</returns>
 		protected override Func<double, double> GetRectificationDerivative()
 		{
-			var polynom = PolynomX1.Pow(2) + PolynomY1.Pow(2) + PolynomZ1.Pow(2);
+			//Прежде использовались только коэффициенты a0…a4 многочлена |P′(t)|², которых хватает лишь для кривых не выше
+			//третьей степени: длина кривой x(t) = t⁴ получалась равной 0, а длины и расстояния для кривых из пяти и более
+			//точек — неверными.
+			if (Points.Length != 4)
+			{
+				//Производная вычисляется в базисе Бернштейна: многочлен |P′(t)|² в степенном базисе при высокой степени
+				//плохо обусловлен (для кривой из 21 точки погрешность длины превышала 40 %).
+				return (x) => GetDerivative(1, x).Length;
+			}
 
-			var a0 = polynom[0];
-			var a1 = polynom[1];
-			var a2 = polynom[2];
-			var a3 = polynom[3];
-			var a4 = polynom[4];
+			//Кубическая кривая — самый частый случай, поэтому для неё схема Горнера для |P′(t)|² развёрнута. Производная
+			//P′(t) = c₀ + c₁t + c₂t² вычисляется по разностям узловых точек Dᵢ = 3(Pᵢ₊₁ − Pᵢ).
+			var d0 = (Points[1] - Points[0])*3;
+			var d1 = (Points[2] - Points[1])*3;
+			var d2 = (Points[3] - Points[2])*3;
 
-			return (x) => System.Math.Sqrt(a0 + x*(a1 + x*(a2 + x*(a3 + x*a4))));
+			var c0 = d0;
+			var c1 = (d1 - d0)*2;
+			var c2 = (d2 - d1) - (d1 - d0);
+
+			var a0 = c0.DotProduct(c0);
+			var a1 = 2*c0.DotProduct(c1);
+			var a2 = c1.DotProduct(c1) + 2*c0.DotProduct(c2);
+			var a3 = 2*c1.DotProduct(c2);
+			var a4 = c2.DotProduct(c2);
+
+			return (x) =>
+			{
+				//Около точки возврата (P′ = 0) погрешность округления может сделать значение многочлена отрицательным:
+				//прежде корень из него давал NaN, например в GetDistance(0.5 − 1e-9, 0.5 + 1e-9).
+				var value = a0 + x*(a1 + x*(a2 + x*(a3 + x*a4)));
+				return value < 0 ? 0 : System.Math.Sqrt(value);
+			};
+		}
+
+		/// <summary>
+		/// Приводит кривую к кубической кривой Безье.
+		/// </summary>
+		/// <returns>Кубическая кривая Безье, совпадающая с исходной кривой, в том числе по параметризации.</returns>
+		/// <exception cref="NotImplementedException">Степень кривой больше 3: такая кривая в общем случае не представима одной кубической кривой Безье.</exception>
+		/// <remarks>Кривые первой и второй степени приводятся к кубической повышением степени, кубическая кривая копируется.</remarks>
+		public override BezierCurve RecastToBezierCurve()
+		{
+			//Прежде метод не был реализован даже для кубических (в том числе для самой BezierCurve) и квадратичных кривых.
+			switch (Points.Length)
+			{
+				case 2:
+					//Отрезок: промежуточные точки делят его на три равные части, поэтому параметризация сохраняется.
+					return new BezierCurve(Points[0], Points[0] + (Points[1] - Points[0])/3, Points[0] + (Points[1] - Points[0])*2/3, Points[1]);
+
+				case 3:
+					//Повышение степени квадратичной кривой.
+					return new BezierCurve(Points[0], Points[0] + (Points[1] - Points[0])*2/3, Points[2] + (Points[1] - Points[2])*2/3, Points[2]);
+
+				case 4:
+					return new BezierCurve(Points[0], Points[1], Points[2], Points[3]);
+
+				default:
+					throw new NotImplementedException("Кривая степени выше 3 не приводится к одной кубической кривой Безье.");
+			}
 		}
 
 		#endregion

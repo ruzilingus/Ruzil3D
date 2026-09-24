@@ -94,7 +94,9 @@ namespace Ruzil3D.Curves
 		/// </summary>
 		/// <param name="t0">Параметр начала участка.</param>
 		/// <param name="t1">Параметр конца участка.</param>
-		/// <returns>Длина участка кривой.</returns>
+		/// <returns>Длина участка кривой со знаком: интеграл длины дуги от <paramref name="t0"/> до <paramref name="t1"/>.</returns>
+		/// <remarks>Значение отрицательно, если <paramref name="t1"/> меньше <paramref name="t0"/>:
+		/// <i>GetDistance(t₁, t₀) = −GetDistance(t₀, t₁)</i>. Этому соглашению следуют все кривые библиотеки.</remarks>
 		public virtual double GetDistance(double t0, double t1)
 		{
 			if (RectificationFunction != null)
@@ -153,8 +155,20 @@ namespace Ruzil3D.Curves
 		/// <summary>
 		/// Возвращает строку, представляющую текущий объект.
 		/// </summary>
-		/// <returns> Строка, представляющая текущий объект. </returns>
-		public override string ToString() => GetType().Name + "; " + nameof(Length) + ": " + Length;
+		/// <returns> Строка, представляющая текущий объект: имя типа и длина кривой. Если длину кривой вычислить нельзя, возвращается только имя типа.</returns>
+		public override string ToString()
+		{
+			//Длина вычисляется через GetRectificationDerivative, RectificationFunction или GetDistance. Прежде ToString
+			//выбрасывал NotImplementedException для кривых, в которых реализован только GetValue (в том числе в отладчике).
+			try
+			{
+				return GetType().Name + "; " + nameof(Length) + ": " + Length;
+			}
+			catch (NotImplementedException)
+			{
+				return GetType().Name;
+			}
+		}
 
 		/*
         internal void CloneFieldsTo(ParametricCurve curve)

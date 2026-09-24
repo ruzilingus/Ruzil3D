@@ -84,14 +84,18 @@ namespace Ruzil3D.Curves
 		/// </summary>
 		/// <param name="t0">Параметр начала участка.</param>
 		/// <param name="t1">Параметр конца участка.</param>
-		/// <returns>Длина участка кривой.</returns>
-		public override double GetDistance(double t0, double t1) => Length*Math.Abs(t1 - t0);
+		/// <returns>Длина участка кривой со знаком: отрицательная, если <paramref name="t1"/> меньше <paramref name="t0"/>.</returns>
+		/// <remarks>Как и для остальных кривых, <i>GetDistance(t₁, t₀) = −GetDistance(t₀, t₁)</i>. Прежде для отрезка
+		/// возвращался модуль, и знак результата зависел от типа кривой.</remarks>
+		public override double GetDistance(double t0, double t1) => Length*(t1 - t0);
 
 		/// <summary>
 		/// Приводит отрезок к кривой Безье.
 		/// </summary>
-		/// <returns>Возвращают кривую Безье близкую к заданной.</returns>
-		public override BezierCurve RecastToBezierCurve() => new BezierCurve(P0, P0, P1, P1);
+		/// <returns>Кубическая кривая Безье, совпадающая с отрезком, в том числе по параметризации.</returns>
+		/// <remarks>Промежуточные узловые точки делят отрезок на три равные части. Прежде они совпадали с концами отрезка:
+		/// параметризация кривой менялась, а скорость в её концах была нулевой.</remarks>
+		public override BezierCurve RecastToBezierCurve() => new BezierCurve(P0, P0 + (P1 - P0)/3, P0 + (P1 - P0)*2/3, P1);
 
 		#endregion
 	}

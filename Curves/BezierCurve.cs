@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using Ruzil3D.Approximation;
 using Ruzil3D.Algebra;
-using Ruzil3D.Calculus;
 using Ruzil3D.Geometry;
 
 // ReSharper disable ImpureMethodCallOnReadonlyValueField
@@ -14,12 +12,6 @@ namespace Ruzil3D.Curves
 	/// </summary>
 	public class BezierCurve : BernsteinCurve
 	{
-		//Для преведения кривых через заданные точки
-		private static readonly double[] Line1 = {1D};
-		private static readonly double[] Line2 = {-3D, 3D};
-		private static readonly double[] Line3 = {3D, -6D, 3D};
-		private static readonly double[] Line4 = {-1D, 3D, -3D, 1D};
-
 		#region Main
 
 		/// <summary>
@@ -79,11 +71,11 @@ namespace Ruzil3D.Curves
         }
 
         /// <summary>
-        /// Возвращает произведение исходной матрицы на кривую, преставленный структурой <see cref="BezierCurve"/>.
+        /// Возвращает произведение исходной матрицы на кривую, представленное структурой <see cref="BezierCurve"/>.
         /// </summary>
-        /// <param name="matrix">Исходная кривая.</param>
-        /// <param name="curve">Плоскость для перемножения.</param>
-        /// <returns>Произведение исходной матрицы на кривую <paramref name="curve"/>.</returns>
+        /// <param name="matrix">Матрица преобразования.</param>
+        /// <param name="curve">Исходная кривая.</param>
+        /// <returns>Кривая, узловые точки которой равны произведениям матрицы <paramref name="matrix"/> на узловые точки кривой <paramref name="curve"/>.</returns>
         public static BezierCurve operator *(Matrix3D matrix, BezierCurve curve)
         {
             return new BezierCurve(matrix*curve.Points);
@@ -160,70 +152,75 @@ namespace Ruzil3D.Curves
 		}
 
 		/// <summary>
-		/// Подбирает точки Безье для указанного полинома.
+		/// Возвращает производные в узлах натурального кубического сплайна с узлами 0, 1, …, n − 1, проходящего через заданные точки.
 		/// </summary>
-		/// <param name="polynomial"></param>
-		/// <returns></returns>
-		private static double[] GetBezierPoints(Polynomial polynomial)
+		/// <param name="points">Точки, через которые проходит сплайн (не менее двух).</param>
+		/// <returns>Массив производных сплайна в узлах.</returns>
+		private static Point3D[] GetSplineDerivatives(IList<Point3D> points)
 		{
-			return LinearSystem.Resolve(new[]
+			var count = points.Count;
+			var last = count - 1;
+
+			//Производные dᵢ натурального сплайна с единичным шагом удовлетворяют трёхдиагональной системе
+			//2d₀ + d₁ = 3(P₁ − P₀), dᵢ₋₁ + 4dᵢ + dᵢ₊₁ = 3(Pᵢ₊₁ − Pᵢ₋₁), dₙ₋₂ + 2dₙ₋₁ = 3(Pₙ₋₁ − Pₙ₋₂),
+			//которая решается методом прогонки.
+			var alpha = new double[count];
+			var result = new Point3D[count];
+
+			alpha[0] = 0.5;
+			result[0] = (points[1] - points[0])*1.5;
+
+			for (var i = 1; i < count; i++)
 			{
-				new Linear(Line1, polynomial[0]),
-				new Linear(Line2, polynomial[1]),
-				new Linear(Line3, polynomial[2]),
-				new Linear(Line4, polynomial[3]),
-			});
+				var diagonal = (i == last ? 2D : 4D) - alpha[i - 1];
+				var right = (i == last ? points[i] - points[i - 1] : points[i + 1] - points[i - 1])*3;
+
+				alpha[i] = 1/diagonal;
+				result[i] = (right - result[i - 1])/diagonal;
+			}
+
+			for (var i = last - 1; i >= 0; i--)
+			{
+				result[i] -= result[i + 1]*alpha[i];
+			}
+
+			return result;
 		}
 
 		/// <summary>
 		/// Возвращает дважды-гладкую последовательность кривых проходящих через заданные точки представленных набором структур <see cref="Point3D"/>.
 		/// </summary>
 		/// <param name="points">Набор структур <see cref="Point3D"/>.</param>
-		/// <returns>Массив кривых.</returns>
+		/// <returns>Массив кривых: кривая с индексом i соединяет точки с индексами i и i + 1.</returns>
+		/// <exception cref="ArgumentNullException">Параметр <paramref name="points"/> имеет значение <b>null</b>.</exception>
+		/// <exception cref="ArgumentException">Количество точек меньше двух.</exception>
+		/// <remarks>Кривые образуют натуральный кубический сплайн, параметр которого на i-й кривой равен i + t.</remarks>
 		public static BezierCurve[] FromPoints(IList<Point3D> points)
 		{
+			if (points == null)
+			{
+				throw new ArgumentNullException(nameof(points));
+			}
+
 			if (points.Count < 2)
 			{
 				throw new ArgumentException("Количество точек должно быть больше 1.", nameof(points));
 			}
 
-			var pointsX = new PointD[points.Count];
-			var pointsY = new PointD[points.Count];
-			var pointsZ = new PointD[points.Count];
-
-			for (var i = 0; i < points.Count; i++)
-			{
-				var point = points[i];
-				pointsX[i] = new PointD(i, point.X);
-				pointsY[i] = new PointD(i, point.Y);
-				pointsZ[i] = new PointD(i, point.Z);
-			}
-
-			//Строем кубические сплайны X(t), Y(t), Z(t)
-			var funcX = new CubicInterpolation(pointsX);
-			var funcY = new CubicInterpolation(pointsY);
-			var funcZ = new CubicInterpolation(pointsZ);
+			//Узловые точки каждой кривой вычисляются по значениям и производным сплайна в её концах: Pᵢ, Pᵢ + dᵢ/3,
+			//Pᵢ₊₁ − dᵢ₊₁/3, Pᵢ₊₁. Прежде они получались из многочленов сплайна, записанных относительно t = 0 и
+			//пересчитанных для t = i: погрешность росла примерно как куб количества точек (для 50 000 точек из единичного
+			//куба концы кривых отклонялись от заданных точек на 0.2).
+			var derivatives = GetSplineDerivatives(points);
 
 			var result = new BezierCurve[points.Count - 1];
 
 			for (var i = 0; i < result.Length; i++)
 			{
-				var polynomX = funcX.GetPolynom(i);
-				var polynomY = funcY.GetPolynom(i);
-				var polynomZ = funcZ.GetPolynom(i);
+				var p0 = points[i];
+				var p3 = points[i + 1];
 
-				//Замена переменной
-				var sub = new Polynomial(i, 1);
-
-				var resolveX = GetBezierPoints(polynomX.Substitution(sub));
-				var resolveY = GetBezierPoints(polynomY.Substitution(sub));
-				var resolveZ = GetBezierPoints(polynomZ.Substitution(sub));
-
-				result[i] = new BezierCurve(
-					new Point3D(resolveX[0], resolveY[0], resolveZ[0]),
-					new Point3D(resolveX[1], resolveY[1], resolveZ[1]),
-					new Point3D(resolveX[2], resolveY[2], resolveZ[2]),
-					new Point3D(resolveX[3], resolveY[3], resolveZ[3]));
+				result[i] = new BezierCurve(p0, p0 + derivatives[i]/3, p3 - derivatives[i + 1]/3, p3);
 			}
 
 			return result;
