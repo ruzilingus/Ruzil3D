@@ -62,15 +62,15 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Инициализирует новый экземпляр класса <see cref="Matrix3D"/> с указанными элементами.
 		/// </summary>
-		/// <param name="a11">Первый элемент первого столбца матрицы: <i>a<sub>11</sub></i>.</param>
-		/// <param name="a12">Второй элемент первого столбца матрицы: <i>a<sub>12</sub></i>.</param>
-		/// <param name="a13">Третий элемент первого столбца матрицы: <i>a<sub>13</sub></i>.</param>
-		/// <param name="a21">Первый элемент второго столбца матрицы: <i>a<sub>21</sub></i>.</param>
-		/// <param name="a22">Второй элемент второго столбца матрицы: <i>a<sub>22</sub></i>.</param>
-		/// <param name="a23">Третий элемент второго столбца матрицы: <i>a<sub>23</sub></i>.</param>
-		/// <param name="a31">Первый элемент третьего столбца матрицы: <i>a<sub>31</sub></i>.</param>
-		/// <param name="a32">Второй элемент третьего столбца матрицы: <i>a<sub>32</sub></i>.</param>
-		/// <param name="a33">Третий элемент третьего столбца матрицы: <i>a<sub>33</sub></i>.</param>
+		/// <param name="a11">Первый элемент первой строки матрицы: <i>a<sub>11</sub></i>.</param>
+		/// <param name="a12">Второй элемент первой строки матрицы: <i>a<sub>12</sub></i>.</param>
+		/// <param name="a13">Третий элемент первой строки матрицы: <i>a<sub>13</sub></i>.</param>
+		/// <param name="a21">Первый элемент второй строки матрицы: <i>a<sub>21</sub></i>.</param>
+		/// <param name="a22">Второй элемент второй строки матрицы: <i>a<sub>22</sub></i>.</param>
+		/// <param name="a23">Третий элемент второй строки матрицы: <i>a<sub>23</sub></i>.</param>
+		/// <param name="a31">Первый элемент третьей строки матрицы: <i>a<sub>31</sub></i>.</param>
+		/// <param name="a32">Второй элемент третьей строки матрицы: <i>a<sub>32</sub></i>.</param>
+		/// <param name="a33">Третий элемент третьей строки матрицы: <i>a<sub>33</sub></i>.</param>
 		public Matrix3D(double a11, double a12, double a13, double a21, double a22, double a23, double a31, double a32,
 			double a33)
 		{
@@ -540,7 +540,7 @@ namespace Ruzil3D.Algebra
 		#endregion
 
 		/// <summary>
-		/// Возвращает условие показывающее, что хотя бы один из компонентов X, Y или Z не является числом.
+		/// Возвращает условие показывающее, что хотя бы один из элементов матрицы не является числом.
 		/// </summary>
 		public bool IsNaN => Line1.IsNaN || Line2.IsNaN || Line3.IsNaN;
 

@@ -208,8 +208,19 @@ namespace Ruzil3D.Geometry
 		/// <summary>
 		/// Возвращает обратное преобразование.
 		/// </summary>
-		/// <returns>Обратное преобразование</returns>
+		/// <returns>Обратное преобразование того же вида, что и исходное: например, для <see cref="Isometry"/> — тоже <see cref="Isometry"/>.</returns>
 		public Affinity GetInvert()
+		{
+			//Производные классы возвращают обратное преобразование своего типа через GetInvertCore: прежде
+			//Isometry только скрывала этот метод, и через ссылку на Affinity обратная изометрия не была Isometry.
+			return GetInvertCore();
+		}
+
+		/// <summary>
+		/// Возвращает обратное преобразование. Производные классы переопределяют этот метод, чтобы <see cref="GetInvert"/> возвращал преобразование их типа.
+		/// </summary>
+		/// <returns>Обратное преобразование.</returns>
+		protected virtual Affinity GetInvertCore()
 		{
 			var m = Matrix.GetInvert();
 			return new Affinity(m, -m*Center);
@@ -233,13 +244,17 @@ namespace Ruzil3D.Geometry
 		/// Возвращает значение, указывающее, равен ли данный экземпляр указанному объекту.
 		/// </summary>
 		/// <param name="obj">Объект для сравнения с текущим экземпляром.</param>
-		/// <returns>Значение <b>true</b>, если <paramref name="obj"/> относится к типу <see cref="Affinity"/> не является <b>null</b> и представляет одинаковые значения с исходным объектом; в противном случае — значение <b>false</b>.</returns>
+		/// <returns>Значение <b>true</b>, если <paramref name="obj"/> относится к типу <see cref="Affinity"/> (в том числе производному, например <see cref="Isometry"/>), не является <b>null</b> и имеет те же матрицу и смещение, что и исходный объект; в противном случае — значение <b>false</b>.</returns>
+		/// <remarks>Как и оператор ==, метод сравнивает преобразования, а не их типы.</remarks>
 		public override bool Equals(object obj)
 		{
 			if (ReferenceEquals(null, obj)) return false;
 			if (ReferenceEquals(this, obj)) return true;
-			if (obj.GetType() != GetType()) return false;
-			return Equals((Affinity) obj);
+
+			//Тип не сравнивается, как и в операторе ==: прежде Affinity.Identity == Isometry.Identity было истинно,
+			//а Equals для тех же объектов возвращал false.
+			var other = obj as Affinity;
+			return !ReferenceEquals(other, null) && Equals(other);
 		}
 
 		/// <summary>

@@ -5,7 +5,7 @@ using Ruzil3D.Algebra;
 namespace Ruzil3D.Geometry
 {
 	/// <summary>
-	/// - Представляет треугольник в трехмерном евклидовом пространстве.
+	/// Представляет треугольник в трехмерном евклидовом пространстве.
 	/// </summary>
 	public struct Triangle3D
 	{
@@ -79,6 +79,9 @@ namespace Ruzil3D.Geometry
 			}
 		}
 
+		/// <summary>
+		/// Представляет лексикографическое сравнение вершин: сначала по координате X, затем по Y и по Z.
+		/// </summary>
 		public static readonly IComparer<Point3D> VertexComparer = new CVertexComparer();
 
 		#region Contains Items
@@ -104,9 +107,20 @@ namespace Ruzil3D.Geometry
 			}
 		}
 
+		/// <summary>
+		/// Представляет лексикографическое сравнение треугольников: сначала по вершине <see cref="Point0"/>, затем по <see cref="Point1"/> и по <see cref="Point2"/>
+		/// (вершины сравниваются с помощью <see cref="VertexComparer"/>).
+		/// </summary>
 		public static readonly IComparer<Triangle3D> Triangles3DComparer = new CTriangles3DComparer();
 
-		[Obsolete]
+		/// <summary>
+		/// Выполняет двоичный поиск треугольника в списке, упорядоченном с помощью <see cref="Triangles3DComparer"/>.
+		/// </summary>
+		/// <param name="sortedItems">Список треугольников, упорядоченный по возрастанию с помощью <see cref="Triangles3DComparer"/>.</param>
+		/// <param name="item">Искомый треугольник.</param>
+		/// <param name="index">Индекс найденного треугольника или, если он не найден, индекс, по которому его нужно вставить, чтобы сохранить порядок.</param>
+		/// <returns>Значение <b>true</b>, если треугольник найден; в противном случае — значение <b>false</b>.</returns>
+		[Obsolete("Метод устарел. Используйте List<Triangle3D>.BinarySearch с компаратором " + nameof(Triangles3DComparer) + ".")]
 		public static bool Contains(List<Triangle3D> sortedItems, Triangle3D item, out int index)
 		{
 			if (sortedItems == null || sortedItems.Count == 0)
@@ -206,6 +220,12 @@ namespace Ruzil3D.Geometry
 		/// <param name="point0">Первая вершина треугольника.</param>
 		/// <param name="point1">Вторая вершина треугольника.</param>
 		/// <param name="point2">Третья вершина треугольника.</param>
+		/// <remarks>
+		/// Вершины упорядочиваются и могут не совпадать с порядком параметров: <see cref="Point0"/> — наименьшая вершина в смысле <see cref="VertexComparer"/>,
+		/// а <see cref="Point1"/> и <see cref="Point2"/> выбираются так, чтобы обход <see cref="Point0"/> → <see cref="Point1"/> → <see cref="Point2"/> в проекции на плоскость XY
+		/// шел против часовой стрелки (если проекция вырождается в отрезок, <see cref="Point1"/> — большая, а <see cref="Point2"/> — меньшая из двух оставшихся вершин).
+		/// Поэтому порядок обхода вершин и направление нормали исходного треугольника могут измениться на противоположные.
+		/// </remarks>
 		public Triangle3D(Point3D point0, Point3D point1, Point3D point2)
 		{
 			Point3D[] vertex = {point0, point1, point2};

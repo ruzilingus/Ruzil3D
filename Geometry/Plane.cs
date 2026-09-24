@@ -10,29 +10,38 @@ namespace Ruzil3D.Geometry
 	public struct Plane
 	{
 		/// <summary>
-		/// Получает значение указывающее, что уравнение плоскости является канонической.
+		/// Получает значение указывающее, что уравнение плоскости является каноническим: нормаль (<see cref="A"/>, <see cref="B"/>, <see cref="C"/>) имеет единичную длину (с точностью до погрешности округления), а <see cref="D"/> ≤ 0.
 		/// </summary>
-		public bool IsNormalized { get; private set; }
+		/// <remarks>Значение вычисляется по текущим коэффициентам, поэтому учитывает и их изменение после вызова <see cref="Normalize"/>.</remarks>
+		public bool IsNormalized => Math.Abs(A*A + B*B + C*C - 1) <= NormalizedTolerance && D <= 0;
 
 		/// <summary>
-		/// Получает или задает коэффициент <see cref="A"/> из общего уравнения прямой.
+		/// Получает или задает коэффициент <see cref="A"/> из общего уравнения плоскости.
 		/// </summary>
 		public double A;
 
 		/// <summary>
-		/// Получает или задает коэффициент <see cref="B"/> из общего уравнения прямой.
+		/// Получает или задает коэффициент <see cref="B"/> из общего уравнения плоскости.
 		/// </summary>
 		public double B;
 
 		/// <summary>
-		/// Получает или задает коэффициент <see cref="C"/> из общего уравнения прямой.
+		/// Получает или задает коэффициент <see cref="C"/> из общего уравнения плоскости.
 		/// </summary>
 		public double C;
 
 		/// <summary>
-		/// Получает или задает коэффициент <see cref="D"/> из общего уравнения прямой.
+		/// Получает или задает коэффициент <see cref="D"/> из общего уравнения плоскости.
 		/// </summary>
 		public double D;
+
+		//Допуск, с которым сравниваются плоскости и проверяется параллельность: синус угла между нормалями
+		//(или между нормалью и прямой) и относительное расстояние. Погрешность округления при построении
+		//плоскостей и прямых по точкам на несколько порядков меньше.
+		private const double Tolerance = 1E-10;
+
+		//Допуск для признака нормального вида: после Normalize квадрат длины нормали отличается от 1 на несколько ulp.
+		private const double NormalizedTolerance = 1E-14;
 
 
 		/// <summary>
@@ -43,8 +52,6 @@ namespace Ruzil3D.Geometry
 		/// <param name="point2">Третья заданная точка.</param>
 		public Plane(Point3D point0, Point3D point1, Point3D point2)
 		{
-			IsNormalized = false;
-
 			//Проводим плоскость через 3 точки
 
 			var dx1 = point1.X - point0.X;
@@ -70,7 +77,6 @@ namespace Ruzil3D.Geometry
 		/// <param name="normal">Нормаль к плоскости.</param>
 		public Plane(Point3D point, Point3D normal)
 		{
-			IsNormalized = false;
 			A = normal.X;
 			B = normal.Y;
 			C = normal.Z;
@@ -80,7 +86,7 @@ namespace Ruzil3D.Geometry
 		}
 
 		/// <summary>
-		/// Инициализирует новую плоскость в трехмерном евклидовом пространстве через коэффициенты общего уравнения прямой.
+		/// Инициализирует новую плоскость в трехмерном евклидовом пространстве через коэффициенты общего уравнения плоскости.
 		/// </summary>
 		/// <param name="a">Задает коэффициент A.</param>
 		/// <param name="b">Задает коэффициент B.</param>
@@ -88,8 +94,6 @@ namespace Ruzil3D.Geometry
 		/// <param name="d">Задает коэффициент D.</param>
 		public Plane(double a, double b, double c, double d)
 		{
-			IsNormalized = false;
-
 			A = a;
 			B = b;
 			C = c;
@@ -103,7 +107,8 @@ namespace Ruzil3D.Geometry
 		/// <returns>Значение уравнения плоскости в точе <paramref name="point"/>.</returns>
 		/// <remarks>
 		/// Если уравнение плоскости задано в канонической форме, то абсолютное значение функции <see cref="GetValue"/> равно кратчайшему расстоянию от точки <paramref name="point"/> до плоскости.
-		/// Если при вычислении получилось отрицательное число, то это означает, что точка <paramref name="point"/> и начало координат находятся по разные стороны от плоскости.
+		/// В канонической форме <see cref="D"/> ≤ 0, поэтому отрицательное значение означает, что точка <paramref name="point"/> и начало координат находятся по одну сторону от плоскости,
+		/// а положительное — что по разные стороны. Например, для плоскости z = 1 значение в точке (0, 0, 0.5) равно -0.5, а в точке (0, 0, 2) равно 1.
 		/// Для приведения плоскости к каноническому виду нужно предварительно вызвать метод <see cref="Normalize"/>.
 		/// Чтобы проверить, является ли плоскость нормализованной, нужно обратиться к свойству <see cref="IsNormalized"/>.
 		/// </remarks>
@@ -121,36 +126,38 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="x">Первая плоскость для сравнения.</param>
 		/// <param name="y">Вторая плоскость для сравнения.</param>
-		/// <returns>Значение <b>true</b>, если параметры <paramref name="x"/> и <paramref name="y"/> имеют одинаковые значения; в противном случае — значение <b>false</b>.</returns>
+		/// <returns>Значение <b>true</b>, если параметры <paramref name="x"/> и <paramref name="y"/> задают одну и ту же плоскость или имеют одинаковые коэффициенты; в противном случае — значение <b>false</b>.</returns>
+		/// <remarks>
+		/// Сравниваются плоскости, а не коэффициенты: уравнения, отличающиеся ненулевым множителем (в том числе отрицательным), задают одну плоскость.
+		/// Нормали сравниваются с точностью 10⁻¹⁰, а расстояния до начала координат — с относительной точностью 10⁻¹⁰ (но не меньше 10⁻¹⁰ по абсолютной величине),
+		/// чтобы погрешность округления не делала различными одну и ту же плоскость, построенную, например, по точкам в разном порядке.
+		/// Коэффициенты, которые не задают плоскость (например, все равные нулю), равны только таким же коэффициентам.
+		/// Если среди коэффициентов есть <see cref="double.NaN"/> (например, плоскость построена по точкам на одной прямой), оператор возвращает <b>false</b>, как и для <see cref="double.NaN"/>.
+		/// </remarks>
 		public static bool operator ==(Plane x, Plane y)
 		{
-			var xNorm = x.GetNorm();
-			if (double.IsNaN(xNorm) || double.IsInfinity(xNorm) || 0D.Equals(xNorm))
+			//Одинаковые коэффициенты задают одно и то же уравнение, даже если оно не задает плоскость (например, все
+			//коэффициенты равны нулю): прежде new Plane(0, 0, 0, 0) не была равна самой себе.
+			if (x.A == y.A && x.B == y.B && x.C == y.C && x.D == y.D)
+			{
+				return true;
+			}
+
+			//Прежде сравнивались коэффициенты, умноженные на нормы, без допуска, а знак приводился только при D ≠ 0:
+			//плоскость, построенная по тем же точкам в другом порядке, и плоскости, проходящие через начало координат,
+			//оказывались неравными. Теперь сравниваются нормальные уравнения с обоими знаками и с допуском.
+			Point3D xNormal, yNormal;
+			double xd, yd;
+			if (!x.GetUnit(out xNormal, out xd) || !y.GetUnit(out yNormal, out yd))
 			{
 				return false;
 			}
 
-			var yNorm = y.GetNorm();
-			if (double.IsNaN(yNorm) || double.IsInfinity(yNorm) || 0D.Equals(yNorm))
-			{
-				return false;
-			}
-
-			if (x.D > 0)
-			{
-				xNorm *= -1;
-			}
-
-			if (y.D > 0)
-			{
-				yNorm *= -1;
-			}
+			var scale = Math.Max(1D, Math.Max(Math.Abs(xd), Math.Abs(yd)));
 
 			return
-				(x.A*yNorm).Equals(y.A*xNorm) &&
-				(x.B*yNorm).Equals(y.B*xNorm) &&
-				(x.C*yNorm).Equals(y.C*xNorm) &&
-				(x.D*yNorm).Equals(y.D*xNorm);
+				IsNear(xNormal, yNormal, xd, yd, scale) ||
+				IsNear(xNormal, -yNormal, xd, -yd, scale);
 		}
 
 		/// <summary>
@@ -158,7 +165,7 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="x">Первая плоскость для сравнения.</param>
 		/// <param name="y">Вторая плоскость для сравнения.</param>
-		/// <returns>Значение <b>true</b>, если параметры <paramref name="x"/> и <paramref name="y"/> имеют разные значения; в противном случае — значение <b>false</b>.</returns>
+		/// <returns>Значение <b>true</b>, если оператор <see cref="operator ==(Plane, Plane)"/> для тех же параметров возвращает <b>false</b>; в противном случае — значение <b>false</b>.</returns>
 		public static bool operator !=(Plane x, Plane y)
 		{
 			return !(x == y);
@@ -170,12 +177,15 @@ namespace Ruzil3D.Geometry
 		/// <param name="plane">Плоскость.</param>
 		/// <param name="line">Прямая.</param>
 		/// <returns>Точка пересечения плоскости и прямой.</returns>
-		/// <exception cref="ArgumentException">Если прямая и плоскость параллельны.</exception>
+		/// <exception cref="ArgumentException">Если прямая и плоскость параллельны: синус угла между ними не больше 10⁻¹⁰, в том числе если прямая лежит в плоскости.</exception>
 		public static Point3D operator *(Plane plane, Line3D line)
 		{
-			var denominator = plane.A*line.S.X + plane.B*line.S.Y + plane.C*line.S.Z;
+			var normal = plane.GetNormal();
+			var denominator = normal.DotProduct(line.S);
 
-			if (denominator.Equals(0D))
+			//Параллельность проверяется с допуском относительно длин нормали и направляющей: прежде проверялось точное
+			//равенство нулю, и погрешность округления для параллельной прямой давала точку на расстоянии ~1e15.
+			if (Math.Abs(denominator) <= Tolerance*normal.Length*line.S.Length)
 			{
 				throw new ArgumentException("Плоскость и прямая параллельны.");
 			}
@@ -190,84 +200,44 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="plane1">Первая плоскость.</param>
 		/// <param name="plane2">Вторая плоскость.</param>
-		/// <returns>Линия пересечения друх плоскостей.</returns>
-		/// <exception cref="ArgumentException">Плоскости параллельны.</exception>
+		/// <returns>Линия пересечения друх плоскостей. Ее точка <see cref="Line3D.M"/> — ближайшая к началу координат, а направляющая сонаправлена векторному произведению нормалей.</returns>
+		/// <exception cref="ArgumentException">
+		/// Один из параметров не является плоскостью (коэффициенты не являются конечными числами или нормаль нулевая)
+		/// либо плоскости параллельны (синус угла между ними не больше 10⁻¹⁰), в том числе совпадают.
+		/// </exception>
 		public static Line3D operator *(Plane plane1, Plane plane2)
 		{
+			Point3D normal1, normal2;
+			double d1, d2;
 
-			//return new Line3D(Point3D.Empty, Point3D.UnitX);
-
-
-			double x0, y0, z0, x1, y1, z1, x2, y2, z2;
-			
-			if (!0D.Equals(plane1.A))
-			{
-				y0 = z0 = y1 = z2 = 0;
-				z1 = y2 = 1;
-
-				x0 = -plane1.D / plane1.A;
-				x1 = (-plane1.D - plane1.C * z1) / plane1.A;
-				x2 = (-plane1.D - plane1.B * y2) / plane1.A;
-			}
-			else if (!0D.Equals(plane1.B))
-			{
-				x0 = z0 = x1 = z2 = 0;
-				z1 = x2 = 1;
-
-				y0 = -plane1.D / plane1.B;
-				y1 = (-plane1.D - plane1.C * z1) / plane1.B;
-				y2 = (-plane1.D - plane1.A * x2) / plane1.B;
-			}
-			else if (!0D.Equals(plane1.C))
-			{
-				x0 = y0 = x1 = y2 = 0;
-				y1 = x2 = 1;
-
-				z0 = -plane1.D/plane1.C;
-				z1 = (-plane1.D - plane1.B*y1)/plane1.C;
-				z2 = (-plane1.D - plane1.A*x2)/plane1.C;
-			}
-			else
+			if (!plane1.GetUnit(out normal1, out d1))
 			{
 				throw new ArgumentException("Параметр " + nameof(plane1) + " не является плоскостью!");
 			}
-			
-			//Координаты направляющей
-			double sx, sy, sz;
 
-			var ux = x1 - x0;
-			var uy = y1 - y0;
-			var uz = z1 - z0;
-			var n = plane2.A * ux + plane2.B * uy + plane2.C * uz;
-
-			if (0D.Equals(n))
+			if (!plane2.GetUnit(out normal2, out d2))
 			{
-				sx = ux;
-				sy = uy;
-				sz = uz;
-
-				ux = x2 - x0;
-				uy = y2 - y0;
-				uz = z2 - z0;
-				n = plane2.A * ux + plane2.B * uy + plane2.C * uz;
-			}
-			else
-			{
-				sx = plane1.B * plane2.C - plane1.C * plane2.B;
-				sy = plane1.C * plane2.A - plane1.A * plane2.C;
-				sz = plane1.A * plane2.B - plane1.B * plane2.A;			
+				throw new ArgumentException("Параметр " + nameof(plane2) + " не является плоскостью!");
 			}
 
-			if (n.Equals(0D))
+			//Направляющая перпендикулярна обеим нормалям, а для единичных нормалей ее длина равна синусу угла между
+			//плоскостями. Прежде параллельность проверялась точным сравнением с нулем: для параллельных плоскостей
+			//получалась прямая на расстоянии ~1e15 или, в зависимости от порядка плоскостей, исключение о совпадающих точках.
+			var s = normal1*normal2;
+			var sin2 = s.DotProduct(s);
+
+			if (!(sin2 > Tolerance*Tolerance))
 			{
 				throw new ArgumentException("Плоскости параллельны!");
 			}
-			
-			//Точка лежащая на обеих плоскостях
-			var t = (-plane2.D - plane2.A * x0 - plane2.B * y0 - plane2.C * z0) / n;
-			var m = new Point3D(x0 + ux * t, y0 + uy * t, z0 + uz * t);
 
-			return new Line3D(m, new Point3D(sx + m.X, sy + m.Y, sz + m.Z));
+			//Ближайшая к началу координат точка прямой (m·n₁ = -d₁, m·n₂ = -d₂, m·s = 0). Прежде точка искалась через
+			//первый ненулевой коэффициент первой плоскости, и при малом ненулевом коэффициенте (например, -5.55e-17 из-за
+			//округления) погрешность достигала расстояния между точками плоскостей, а при 1e-310 выбрасывалось исключение.
+			var m = (-d1*(normal2*s) - d2*(s*normal1))/sin2;
+
+			//Прямая строится от начала координат и затем переносится в точку m, чтобы направляющая не теряла точность.
+			return new Line3D(Point3D.Empty, s) + m;
 		}
 
 		/*
@@ -307,16 +277,11 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="transform">Преобразование трехмерного евклидово пространства.</param>
 		/// <param name="plane">Исходная плоскость.</param>
-		/// <returns>Преобразованная плоскость.</returns>
+		/// <returns>Преобразованная плоскость: образ плоскости <paramref name="plane"/> при преобразовании <paramref name="transform"/>.</returns>
+		/// <remarks>Если матрица преобразования вырождена и отображает плоскость в прямую или точку, коэффициенты результата не являются числами (<see cref="double.NaN"/>).</remarks>
 		public static Plane operator *(Affinity transform, Plane plane)
 		{
 			return transform.Matrix*plane + transform.Center;
-
-			/*
-            var normal = new Point3D(plane.A, plane.B, plane.C);
-            var point = -plane.D / plane.GetNorm() * normal;
-            return new Plane(transform.Matrix * point + transform.Center, transform.Matrix * normal);
-            */
 		}
 
 		/// <summary>
@@ -324,13 +289,20 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="matrix">Исходная матрица.</param>
 		/// <param name="plane">Плоскость для перемножения.</param>
-		/// <returns>Произведение исходной матрицы на плоскость <paramref name="plane"/>.</returns>
+		/// <returns>Произведение исходной матрицы на плоскость <paramref name="plane"/>: образ плоскости при линейном преобразовании с матрицей <paramref name="matrix"/>, приведенный к каноническому виду.</returns>
+		/// <remarks>Если матрица вырождена и отображает плоскость в прямую или точку, коэффициенты результата не являются числами (<see cref="double.NaN"/>).</remarks>
 		public static Plane operator *(Matrix3D matrix, Plane plane)
 		{
-			var normal = new Point3D(plane.A, plane.B, plane.C);
-			var point = -plane.D/plane.GetNorm()*normal;
+			//Точка x лежит на образе плоскости, если n·M⁻¹x + D = 0, то есть (M⁻ᵀn)·x + D = 0. Уравнение умножается на
+			//определитель: нормаль преобразуется матрицей алгебраических дополнений det(M)·M⁻ᵀ, а D умножается на det(M),
+			//поэтому результат верен и для вырожденной матрицы, отображающей плоскость на плоскость.
+			//Прежде нормаль умножалась на саму матрицу (неверно для любого преобразования, кроме поворота и равномерного
+			//масштабирования), а точка плоскости бралась на расстоянии -D/|n| вместо -D/|n|² от начала координат.
+			var normal = matrix.GetAdjugate().GetTranspose()*plane.GetNormal();
+			var result = new Plane(normal.X, normal.Y, normal.Z, matrix.GetDeterminant()*plane.D);
+			result.Normalize();
 
-			return new Plane(matrix*point, matrix*normal);
+			return result;
 		}
 
 		/// <summary>
@@ -371,10 +343,12 @@ namespace Ruzil3D.Geometry
 		#region Methods
 
 		/// <summary>
-		/// Приводит уравнение прямой к нормальному виду.
+		/// Приводит уравнение плоскости к нормальному виду: нормаль (<see cref="A"/>, <see cref="B"/>, <see cref="C"/>) получает единичную длину, а <see cref="D"/> ≤ 0.
 		/// </summary>
 		public void Normalize()
 		{
+			//Признак нормального вида вычисляется по текущим коэффициентам: прежде сохраненный флаг устаревал после
+			//изменения полей A, B, C или D, и метод ничего не делал.
 			if (IsNormalized)
 			{
 				return;
@@ -391,19 +365,35 @@ namespace Ruzil3D.Geometry
 			B /= norm;
 			C /= norm;
 			D /= norm;
-
-			IsNormalized = true;
-
-		}
-
-		private double GetNorm2()
-		{
-			return IsNormalized ? 1 : A*A + B*B + C*C;
 		}
 
 		private double GetNorm()
 		{
-			return IsNormalized ? 1 : Math.Sqrt(A*A + B*B + C*C);
+			return IsNormalized ? 1 : GetNormal().Length;
+		}
+
+		private Point3D GetNormal()
+		{
+			return new Point3D(A, B, C);
+		}
+
+		//Нормаль единичной длины и коэффициент D, деленный на длину нормали. Возвращает false, если коэффициенты не задают плоскость.
+		private bool GetUnit(out Point3D normal, out double d)
+		{
+			var norm = GetNormal().Length;
+			normal = GetNormal()/norm;
+			d = D/norm;
+
+			return norm > 0 && !double.IsInfinity(norm) && !double.IsNaN(d) && !double.IsInfinity(d);
+		}
+
+		private static bool IsNear(Point3D normal1, Point3D normal2, double d1, double d2, double scale)
+		{
+			return
+				Math.Abs(normal1.X - normal2.X) <= Tolerance &&
+				Math.Abs(normal1.Y - normal2.Y) <= Tolerance &&
+				Math.Abs(normal1.Z - normal2.Z) <= Tolerance &&
+				Math.Abs(d1 - d2) <= Tolerance*scale;
 		}
 
 		/// <summary>
@@ -412,7 +402,7 @@ namespace Ruzil3D.Geometry
 		/// <param name="x">Параметр x.</param>
 		/// <param name="y">Параметр y.</param>
 		/// <returns>Параметр z.</returns>
-		[Obsolete]
+		[Obsolete("Метод устарел. Используйте пересечение плоскости с прямой, параллельной оси Z: plane * new Line3D(new Point3D(x, y, 0), new Point3D(x, y, 1)).")]
 		public double GetZValue(double x, double y)
 		{
 			return -(A*x + B*y + D)/C;
@@ -429,7 +419,7 @@ namespace Ruzil3D.Geometry
 		/// <returns>Строковое представлеине данной плоскости.</returns>
 		/// <remarks>
 		/// <code>
-		/// var plane = new new Plane(1,1,1,1);
+		/// var plane = new Plane(1,1,1,1);
 		/// Console.Write(plane); //Результат: n̅ = (-1/√3; -1/√3; -1/√3) p = 1/√3
 		/// </code>
 		/// </remarks>
@@ -491,17 +481,19 @@ namespace Ruzil3D.Geometry
 		/// Возвращает значение, указывающее, равен ли данный экземпляр другому.
 		/// </summary>
 		/// <param name="other">Другая плоскость.</param>
-		/// <returns>Значение <b>true</b>, если две прямые совпадают; в противном случае — значение <b>false</b>.</returns>
+		/// <returns>Значение <b>true</b>, если две плоскости совпадают (см. <see cref="operator ==(Plane, Plane)"/>) или имеют одинаковые коэффициенты; в противном случае — значение <b>false</b>.</returns>
+		/// <remarks>В отличие от оператора ==, метод, как и <see cref="double.Equals(double)"/>, считает равными и одинаковые коэффициенты <see cref="double.NaN"/>, поэтому любая плоскость равна самой себе.</remarks>
 		public bool Equals(Plane other)
 		{
-			return this == other;
+			//Метод рефлексивен и для коэффициентов NaN: прежде такая плоскость не находилась, например, в List.Contains.
+			return this == other || A.Equals(other.A) && B.Equals(other.B) && C.Equals(other.C) && D.Equals(other.D);
 		}
 
 		/// <summary>
 		/// Показывает, равен ли этот экземпляр заданному объекту.
 		/// </summary>
 		/// <returns>
-		/// Значение <b>true</b>, если <paramref name="obj"/> относится к типу <see cref="Plane"/> и представляет одинаковые значения с исходной структурой; в противном случае — значение <b>false</b>.
+		/// Значение <b>true</b>, если <paramref name="obj"/> относится к типу <see cref="Plane"/> и равен исходной плоскости в смысле метода <see cref="Equals(Plane)"/>; в противном случае — значение <b>false</b>.
 		/// </returns>
 		/// <param name="obj">Другой объект, подлежащий сравнению.</param>
 		public override bool Equals(object obj)
@@ -516,6 +508,7 @@ namespace Ruzil3D.Geometry
 		/// <returns>
 		/// 32-разрядное целое число со знаком, являющееся хэш-кодом для данного экземпляра.
 		/// </returns>
+		/// <remarks>Хэш-код одинаков для всех плоскостей, так как равные плоскости могут иметь разные коэффициенты.</remarks>
 		public override int GetHashCode()
 		{
 			return 0;

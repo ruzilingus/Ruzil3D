@@ -24,21 +24,31 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="point0">Первая точка в трехмерном евклидовом пространстве.</param>
 		/// <param name="point1">Вторая точка в трехмерном евклидовом пространстве.</param>
-		/// <exception cref="ArgumentException"></exception>
+		/// <exception cref="ArgumentException">Точки совпадают или содержат координаты, не являющиеся конечными числами.</exception>
 		public Line3D(Point3D point0, Point3D point1)
 		{
 			M = point0;
 
 			var s = point1 - point0;
 
+			//Длина считается без переполнения и антипереполнения: прежде различные точки на расстоянии 1e-200
+			//считались совпадающими, а для точек на расстоянии больше ~1e154 направляющая получалась нулевой.
 			var len = s.Length;
+
+			if (double.IsInfinity(len))
+			{
+				//Разность конечных, но очень далеких друг от друга точек переполняется: направление находим по половинам координат.
+				s = 0.5*point1 - 0.5*point0;
+				len = s.Length;
+			}
 
 			if (len.Equals(0D))
 			{
 				throw new ArgumentException("Точки \"" + nameof(point0) + "\" и \"" + nameof(point1) + "\" совпадают!");
 			}
 
-			if (double.IsNaN(len))
+			//Бесконечные координаты тоже отклоняются: прежде направляющая для них состояла из нулей и NaN.
+			if (double.IsNaN(len) || double.IsInfinity(len))
 			{
 				throw new ArgumentException("Точки должны содержать только числовые координаты!");
 			}
@@ -95,7 +105,7 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="x">Координата X точки.</param>
 		/// <returns>Точка на заданной прямой координата X которого задается параметром <paramref name="x"/>.</returns>
-		[Obsolete]
+		[Obsolete("Метод устарел. Используйте пересечение прямой с плоскостью x = const: new Plane(1, 0, 0, -x) * line.")]
 		public Point3D ResolveByX(double x)
 		{
 			return GetValue((x - M.X)/S.X);
@@ -106,7 +116,7 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="y">Координата Y точки.</param>
 		/// <returns>Точка на заданной прямой координата Y которого задается параметром <paramref name="y"/>.</returns>
-		[Obsolete]
+		[Obsolete("Метод устарел. Используйте пересечение прямой с плоскостью y = const: new Plane(0, 1, 0, -y) * line.")]
 		public Point3D ResolveByY(double y)
 		{
 			return GetValue((y - M.Y)/S.Y);
@@ -119,7 +129,8 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="transform">Преобразование трехмерного евклидово пространства.</param>
 		/// <param name="line">Исходная линия.</param>
-		/// <returns>Преобразованная линия.</returns>
+		/// <returns>Преобразованная линия с направляющим вектором единичной длины.</returns>
+		/// <remarks>Если матрица преобразования вырождена и отображает прямую в точку, координаты направляющего вектора результата не являются числами (<see cref="double.NaN"/>).</remarks>
 		public static Line3D operator *(Affinity transform, Line3D line)
 		{
 			return transform.Matrix*line + transform.Center;
@@ -130,16 +141,19 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="matrix">Исходная матрица.</param>
 		/// <param name="line">Прямая для перемножения.</param>
-		/// <returns>Произведение исходной матрицы на прямую <paramref name="line"/>.</returns>
+		/// <returns>Произведение исходной матрицы на прямую <paramref name="line"/>: образ прямой с направляющим вектором единичной длины.</returns>
+		/// <remarks>Если матрица вырождена и отображает прямую в точку, координаты направляющего вектора результата не являются числами (<see cref="double.NaN"/>).</remarks>
 		public static Line3D operator *(Matrix3D matrix, Line3D line)
 		{
-			var m = matrix*line.M;
-			var s = matrix*(line.M + line.S) - m;
+			//Направляющая преобразуется матрицей и нормируется: GetDistance, NormalPoint и ToString рассчитывают на
+			//единичную длину, а прежде, например, после умножения на 2I расстояния получались вдвое больше.
+			//Прежде направляющая вычислялась как M·(m + s) - M·m и теряла точность вдали от начала координат.
+			var s = matrix*line.S;
 
 			return new Line3D
 			{
-				M = m,
-				S = s
+				M = matrix*line.M,
+				S = s/s.Length
 			};
 		}
 
@@ -190,7 +204,7 @@ namespace Ruzil3D.Geometry
 		/// Возвращает строковое представление структуры.
 		/// </summary>
 		/// <returns>
-		/// Строковое представление структуры.
+		/// Строковое представление структуры: ближайшая к началу координат точка прямой m̅ и направляющий вектор s̅, первая ненулевая координата которого положительна.
 		/// </returns>
 		public override string ToString()
 		{
@@ -198,15 +212,10 @@ namespace Ruzil3D.Geometry
 
 			var s = S;
 
-			if (S.X < 0)
-			{
-				s *= -1;
-			}
-			else if (s.X.Equals(0D) && s.Y < 0)
-			{
-				S *= -1;
-			}
-			else if (s.Y.Equals(0D) && s.Z < 0)
+			//Направляющая выводится с положительной первой ненулевой координатой, чтобы одна и та же прямая всегда
+			//печаталась одинаково. Прежде при X = 0 и Y < 0 менялось само свойство S (ToString портил прямую),
+			//а при Y = 0 и Z < 0 знак менялся без проверки X, и прямая печаталась по-разному.
+			if (s.X < 0 || s.X.Equals(0D) && (s.Y < 0 || s.Y.Equals(0D) && s.Z < 0))
 			{
 				s *= -1;
 			}

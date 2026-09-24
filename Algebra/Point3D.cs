@@ -65,12 +65,54 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Возращает длину исходного вектора.
 		/// </summary>
-		public double Length => Sqrt(X * X + Y * Y + Z * Z);
+		/// <remarks>Длина вычисляется без переполнения и потери точности и для очень длинных (с координатами больше 10¹⁵⁴), и для очень коротких (с координатами меньше 10⁻¹⁵⁴) векторов.</remarks>
+		public double Length => GetLength(X * X + Y * Y + Z * Z, X, Y, Z, 0);
 
 		/// <summary>
 		/// Возвращает условие показывающее, что хотя бы один из компонентов X, Y или Z не является числом.
 		/// </summary>
-		public bool IsNaN => double.IsNaN(X) || double.IsNaN(Y) || double.IsNaN(Y);
+		public bool IsNaN => double.IsNaN(X) || double.IsNaN(Y) || double.IsNaN(Z);
+
+		//Наименьшее положительное нормализованное число двойной точности (2⁻¹⁰²²).
+		private const double MinNormal = 2.2250738585072014E-308;
+
+		//Множители 2⁶⁰⁰ и 2⁻⁶⁰⁰: умножение на степень двойки выполняется без погрешности.
+		private const double ScaleUp = 4.149515568880993E+180;
+		private const double ScaleDown = 2.409919865102884E-181;
+
+		/// <summary>
+		/// Возвращает длину вектора с координатами <paramref name="x"/>, <paramref name="y"/>, <paramref name="z"/>, <paramref name="w"/> по уже вычисленной сумме их квадратов.
+		/// </summary>
+		/// <param name="sum">Сумма квадратов координат, вычисленная обычным способом.</param>
+		/// <param name="x">Первая координата.</param>
+		/// <param name="y">Вторая координата.</param>
+		/// <param name="z">Третья координата.</param>
+		/// <param name="w">Четвертая координата.</param>
+		/// <returns>Длина вектора.</returns>
+		internal static double GetLength(double sum, double x, double y, double z, double w)
+		{
+			//Обычный случай: сумма квадратов не переполнилась и не потеряла точность, результат прежний.
+			if (sum >= MinNormal && sum <= double.MaxValue)
+			{
+				return Sqrt(sum);
+			}
+
+			if (double.IsNaN(sum))
+			{
+				return double.NaN;
+			}
+
+			//Сумма квадратов переполняется для координат больше ~1e154 и теряет точность (вплоть до нуля) для координат
+			//меньше ~1e-154: прежде длина (1e200, 1e200, 0) была бесконечной, а длина (3e-170, 4e-170, 0) — нулевой.
+			//Поэтому координаты масштабируются на степень двойки, и вычисление повторяется.
+			var scale = sum > 1 ? ScaleDown : ScaleUp;
+			x *= scale;
+			y *= scale;
+			z *= scale;
+			w *= scale;
+
+			return Sqrt(x * x + y * y + z * z + w * w) / scale;
+		}
 
 		#region Overloads
 
@@ -272,17 +314,33 @@ namespace Ruzil3D.Algebra
 		/// Возвращает косинус угла между текущим вектором и вектором заданным параметром <paramref name="point"/>.
 		/// </summary>
 		/// <param name="point">Вектор, между которым возвращается косинус угла.</param>
-		/// <returns>Косинус угла между текущим вектором и вектором заданным параметром <paramref name="point"/>.</returns>
+		/// <returns>Косинус угла между текущим вектором и вектором заданным параметром <paramref name="point"/>: число от -1 до 1. Если хотя бы один из векторов нулевой, возвращается <see cref="double.NaN"/>.</returns>
 		public double Cos(Point3D point)
 		{
-			return DotProduct(point) / (Length * point.Length);
+			var length = Length * point.Length;
+
+			double cos;
+			if (length >= MinNormal && length <= double.MaxValue)
+			{
+				cos = DotProduct(point) / length;
+			}
+			else
+			{
+				//Произведение длин (и скалярное произведение) переполняется для очень длинных векторов и теряет точность
+				//для очень коротких: тогда векторы предварительно приводятся к единичной длине.
+				cos = (this / Length).DotProduct(point / point.Length);
+			}
+
+			//Погрешность округления выводила косинус за пределы [-1, 1] (для одинаковых векторов (1, 1, 1) получалось
+			//1.0000000000000002), и Acos возвращал NaN. NaN для нулевого вектора сохраняется.
+			return Max(-1D, Min(1D, cos));
 		}
 
 		/// <summary>
 		/// Возвращает угол между текущим вектором и вектором заданным параметром <paramref name="point"/>.
 		/// </summary>
 		/// <param name="point">Вектор, между которым возвращается угол.</param>
-		/// <returns>Угол между текущим вектором и вектором заданным параметром <paramref name="point"/>.</returns>
+		/// <returns>Угол между текущим вектором и вектором заданным параметром <paramref name="point"/> в радианах: число от 0 до π. Если хотя бы один из векторов нулевой, возвращается <see cref="double.NaN"/>.</returns>
 		public double Angle(Point3D point)
 		{
 			return Acos(Cos(point));
@@ -309,7 +367,7 @@ namespace Ruzil3D.Algebra
 			var dx = X - point.X;
 			var dy = Y - point.Y;
 			var dz = Z - point.Z;
-			return Sqrt(dx * dx + dy * dy + dz * dz);
+			return GetLength(dx * dx + dy * dy + dz * dz, dx, dy, dz, 0);
 		}
 
 		/// <summary>

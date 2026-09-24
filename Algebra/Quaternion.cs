@@ -323,7 +323,8 @@ namespace Ruzil3D.Algebra
 		/// Получает абсолютное значение (или величину) кватерниона.
 		/// </summary>
 		/// <value>Абсолютное значение (или величина) кватерниона.</value>
-		public double Abs => Sqrt(GetAbs2());
+		/// <remarks>Модуль вычисляется без переполнения и потери точности и для очень больших (с компонентами больше 10¹⁵⁴), и для очень маленьких (с компонентами меньше 10⁻¹⁵⁴) кватернионов.</remarks>
+		public double Abs => Point3D.GetLength(GetAbs2(), W, U.X, U.Y, U.Z);
 
 		/// <summary>
 		/// Получает сопряженный кватернион.
@@ -375,7 +376,7 @@ namespace Ruzil3D.Algebra
 		/// <remarks>
 		/// <code>
 		/// var q = Quaternion.GetRotation(Math.PI, new Point3D(1, 1, 1));
-		/// Console.Write(q); //Результат: √3/3 i + √3/3 j + √3/3 k
+		/// Console.Write(q); //Результат: 1/√3 i + 1/√3 j + 1/√3 k
 		/// </code>
 		/// </remarks>
 		public override string ToString()

@@ -8,8 +8,6 @@ namespace Ruzil3D.Geometry
 	/// </summary>
 	public struct Line
 	{
-		private bool _isNormalized;
-
 		/// <summary>
 		/// Получает или задает коэффициент <see cref="A"/> из общего уравнения прямой.
 		/// </summary>
@@ -32,7 +30,6 @@ namespace Ruzil3D.Geometry
 		/// <param name="point1">Вторая заданная точка.</param>
 		public Line(PointD point0, PointD point1)
 		{
-			_isNormalized = false;
 			A = point1.Y - point0.Y;
 			B = point0.X - point1.X;
 			C = -A*point0.X - B*point0.Y;
@@ -48,7 +45,6 @@ namespace Ruzil3D.Geometry
 		/// <param name="c">Задает коэффициент C.</param>
 		public Line(double a, double b, double c)
 		{
-			_isNormalized = false;
 			A = a;
 			B = b;
 			C = c;
@@ -61,35 +57,37 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="x">Первая прямая для сравнения.</param>
 		/// <param name="y">Вторая прямая для сравнения.</param>
-		/// <returns>Значение <b>true</b>, если параметры <paramref name="x"/> и <paramref name="y"/> имеют одинаковые значения; в противном случае — значение <b>false</b>.</returns>
+		/// <returns>Значение <b>true</b>, если параметры <paramref name="x"/> и <paramref name="y"/> задают одну и ту же прямую или имеют одинаковые коэффициенты; в противном случае — значение <b>false</b>.</returns>
+		/// <remarks>
+		/// Сравниваются прямые, а не коэффициенты: уравнения, отличающиеся ненулевым множителем (в том числе отрицательным), задают одну прямую.
+		/// Нормали сравниваются с точностью 10⁻¹⁰, а расстояния до начала координат — с относительной точностью 10⁻¹⁰ (но не меньше 10⁻¹⁰ по абсолютной величине),
+		/// чтобы погрешность округления не делала различными одну и ту же прямую, построенную, например, по точкам в разном порядке.
+		/// Коэффициенты, которые не задают прямую (например, все равные нулю), равны только таким же коэффициентам.
+		/// Если среди коэффициентов есть <see cref="double.NaN"/> (например, прямая построена по совпадающим точкам), оператор возвращает <b>false</b>, как и для <see cref="double.NaN"/>.
+		/// </remarks>
 		public static bool operator ==(Line x, Line y)
 		{
-			var xNorm = x.GetNorm();
-			if (double.IsNaN(xNorm) || double.IsInfinity(xNorm) || 0D.Equals(xNorm))
+			//Одинаковые коэффициенты задают одно и то же уравнение, даже если оно не задает прямую (например, все
+			//коэффициенты равны нулю): прежде new Line(0, 0, 0) не была равна самой себе.
+			if (x.A == y.A && x.B == y.B && x.C == y.C)
+			{
+				return true;
+			}
+
+			//Прежде сравнивались коэффициенты, умноженные на нормы, без допуска, а знак приводился только при C ≠ 0:
+			//прямая, построенная по тем же точкам в обратном порядке, и прямые, проходящие через начало координат,
+			//оказывались неравными. Теперь сравниваются нормальные уравнения с обоими знаками и с допуском.
+			double xa, xb, xc, ya, yb, yc;
+			if (!x.GetUnit(out xa, out xb, out xc) || !y.GetUnit(out ya, out yb, out yc))
 			{
 				return false;
 			}
 
-			var yNorm = y.GetNorm();
-			if (double.IsNaN(yNorm) || double.IsInfinity(yNorm) || 0D.Equals(yNorm))
-			{
-				return false;
-			}
-
-			if (x.C > 0)
-			{
-				xNorm *= -1;
-			}
-
-			if (y.C > 0)
-			{
-				yNorm *= -1;
-			}
+			var scale = Math.Max(1D, Math.Max(Math.Abs(xc), Math.Abs(yc)));
 
 			return
-				(x.A*yNorm).Equals(y.A*xNorm) &&
-				(x.B*yNorm).Equals(y.B*xNorm) &&
-				(x.C*yNorm).Equals(y.C*xNorm);
+				IsNear(xa, ya, xb, yb, xc, yc, scale) ||
+				IsNear(xa, -ya, xb, -yb, xc, -yc, scale);
 		}
 
 		/// <summary>
@@ -97,7 +95,7 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="x">Первая прямая для сравнения.</param>
 		/// <param name="y">Вторая прямая для сравнения.</param>
-		/// <returns>Значение <b>true</b>, если параметры <paramref name="x"/> и <paramref name="y"/> имеют разные значения; в противном случае — значение <b>false</b>.</returns>
+		/// <returns>Значение <b>true</b>, если оператор <see cref="operator ==(Line, Line)"/> для тех же параметров возвращает <b>false</b>; в противном случае — значение <b>false</b>.</returns>
 		public static bool operator !=(Line x, Line y)
 		{
 			return !(x == y);
@@ -115,11 +113,11 @@ namespace Ruzil3D.Geometry
 		*/
 
 		/// <summary>
-		/// Приводит уравнение прямой к нормальному виду.
+		/// Приводит уравнение прямой к нормальному виду: нормаль (<see cref="A"/>, <see cref="B"/>) получает единичную длину, а <see cref="C"/> ≤ 0.
 		/// </summary>
 		public void Normalize()
 		{
-			if (_isNormalized)
+			if (IsNormalized)
 			{
 				return;
 			}
@@ -134,13 +132,39 @@ namespace Ruzil3D.Geometry
 			A /= norm;
 			B /= norm;
 			C /= norm;
-
-			_isNormalized = true;
 		}
+
+		//Допуск, с которым сравниваются прямые: разность единичных нормалей и относительная разность расстояний
+		//до начала координат. Погрешность округления при построении прямых по точкам на несколько порядков меньше.
+		private const double Tolerance = 1E-10;
+
+		//Допуск для признака нормального вида: после Normalize квадрат длины нормали отличается от 1 на несколько ulp.
+		private const double NormalizedTolerance = 1E-14;
+
+		//Уравнение приведено к нормальному виду (с точностью до погрешности округления после Normalize).
+		//Признак вычисляется по текущим коэффициентам: поля A, B и C открыты для записи, и прежде сохраненный флаг
+		//устаревал — после изменения коэффициентов GetNorm возвращал 1, а Normalize ничего не делал.
+		private bool IsNormalized => Math.Abs(A*A + B*B - 1) <= NormalizedTolerance && C <= 0;
 
 		private double GetNorm()
 		{
-			return _isNormalized ? 1 : Math.Sqrt(A*A + B*B);
+			return IsNormalized ? 1 : new PointD(A, B).Length;
+		}
+
+		//Коэффициенты уравнения, деленные на длину нормали. Возвращает false, если коэффициенты не задают прямую.
+		private bool GetUnit(out double a, out double b, out double c)
+		{
+			var norm = new PointD(A, B).Length;
+			a = A/norm;
+			b = B/norm;
+			c = C/norm;
+
+			return norm > 0 && !double.IsInfinity(norm) && !double.IsNaN(c) && !double.IsInfinity(c);
+		}
+
+		private static bool IsNear(double a1, double a2, double b1, double b2, double c1, double c2, double scale)
+		{
+			return Math.Abs(a1 - a2) <= Tolerance && Math.Abs(b1 - b2) <= Tolerance && Math.Abs(c1 - c2) <= Tolerance*scale;
 		}
 
 		//Хотя бы один коэффициент не является числом (например, прямая построена по двум совпадающим точкам).
@@ -152,10 +176,15 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <param name="point0">Первая точка отрезка</param>
 		/// <param name="point1">Вторая точка отрезка</param>
-		/// <returns></returns>
+		/// <returns>Значение <b>true</b>, если отрезок пересекает прямую или касается ее; в противном случае — значение <b>false</b>.</returns>
 		public bool IntersectsWith(PointD point0, PointD point1)
 		{
-			return (A*point0.X + B*point0.Y + C)*(A*point1.X + B*point1.Y + C) <= 0;
+			//Сравниваются знаки значений уравнения на концах отрезка. Прежде значения перемножались, и произведение
+			//маленьких чисел одного знака обращалось в ноль: отрезок на высоте 1e-200 над прямой y = 0 «пересекал» ее.
+			var value0 = A*point0.X + B*point0.Y + C;
+			var value1 = A*point1.X + B*point1.Y + C;
+
+			return value0 <= 0 && value1 >= 0 || value0 >= 0 && value1 <= 0;
 		}
 
 		/// <summary>
@@ -228,7 +257,7 @@ namespace Ruzil3D.Geometry
 		/// <remarks>
 		/// <code>
 		/// var line = new Line(1,1,3);
-		/// Console.Write(line); //Результат: θ = -3/4 π, p = 3/√2
+		/// Console.Write(line); //Результат: θ = -3π/4 p = 3/√2
 		/// </code>
 		/// </remarks>
 		public override string ToString()
@@ -267,17 +296,19 @@ namespace Ruzil3D.Geometry
 		/// Возвращает значение, указывающее, равен ли данный экземпляр другому.
 		/// </summary>
 		/// <param name="other">Другая прямая.</param>
-		/// <returns>Значение <b>true</b>, если две прямые совпадают; в противном случае — значение <b>false</b>.</returns>
+		/// <returns>Значение <b>true</b>, если две прямые совпадают (см. <see cref="operator ==(Line, Line)"/>) или имеют одинаковые коэффициенты; в противном случае — значение <b>false</b>.</returns>
+		/// <remarks>В отличие от оператора ==, метод, как и <see cref="double.Equals(double)"/>, считает равными и одинаковые коэффициенты <see cref="double.NaN"/>, поэтому любая прямая равна самой себе.</remarks>
 		public bool Equals(Line other)
 		{
-			return this == other;
+			//Метод рефлексивен и для коэффициентов NaN: прежде такая прямая не находилась, например, в List.Contains.
+			return this == other || A.Equals(other.A) && B.Equals(other.B) && C.Equals(other.C);
 		}
 
 		/// <summary>
 		/// Показывает, равен ли этот экземпляр заданному объекту.
 		/// </summary>
 		/// <returns>
-		/// Значение <b>true</b>, если <paramref name="obj"/> относится к типу <see cref="Line"/> и представляет одинаковые значения с исходной структурой; в противном случае — значение <b>false</b>.
+		/// Значение <b>true</b>, если <paramref name="obj"/> относится к типу <see cref="Line"/> и равен исходной прямой в смысле метода <see cref="Equals(Line)"/>; в противном случае — значение <b>false</b>.
 		/// </returns>
 		/// <param name="obj">Другой объект, подлежащий сравнению.</param>
 		public override bool Equals(object obj)
@@ -292,6 +323,7 @@ namespace Ruzil3D.Geometry
 		/// <returns>
 		/// 32-разрядное целое число со знаком, являющееся хэш-кодом для данного экземпляра.
 		/// </returns>
+		/// <remarks>Хэш-код одинаков для всех прямых, так как равные прямые могут иметь разные коэффициенты.</remarks>
 		public override int GetHashCode()
 		{
 			return 0;

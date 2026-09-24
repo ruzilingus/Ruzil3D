@@ -23,36 +23,35 @@ namespace Ruzil3D.Geometry
 		public readonly PointD Point2;
 
 		/// <summary>
-		/// Центр окружности описанной вокруг данного треугольника.
+		/// Смещение центра окружности, описанной вокруг данного треугольника, относительно вершины <see cref="Point0"/>.
 		/// </summary>
-		private PointD GetCircumCenter()
+		private PointD GetCircumCenterOffset()
 		{
-			var dx01 = Point0.X - Point1.X;
-			var dx12 = Point1.X - Point2.X;
-			var dx20 = Point2.X - Point0.X;
+			//Вычисления ведутся относительно вершины Point0. Прежде использовались квадраты абсолютных координат, и вдали
+			//от начала координат погрешность росла с их квадратом: при смещении 1e7 центр сдвигался на ~0.016, а для
+			//прямоугольного треугольника в точке (1e8, 1e8) радиус получался нулевым.
+			var bx = Point1.X - Point0.X;
+			var by = Point1.Y - Point0.Y;
+			var cx = Point2.X - Point0.X;
+			var cy = Point2.Y - Point0.Y;
 
-			var dy01 = Point0.Y - Point1.Y;
-			var dy12 = Point1.Y - Point2.Y;
-			var dy20 = Point2.Y - Point0.Y;
+			var b2 = bx*bx + by*by;
+			var c2 = cx*cx + cy*cy;
 
-			var d0 = Point0.X*Point0.X + Point0.Y*Point0.Y;
-			var d1 = Point1.X*Point1.X + Point1.Y*Point1.Y;
-			var d2 = Point2.X*Point2.X + Point2.Y*Point2.Y;
+			var norm = 2*(bx*cy - by*cx);
 
-			var norm = 2*(dx01*dy20 - dy01*dx20);
-
-			return new PointD(-(dy01*d2 + dy12*d0 + dy20*d1)/norm, (dx01*d2 + dx12*d0 + dx20*d1)/norm);
+			return new PointD((cy*b2 - by*c2)/norm, (bx*c2 - cx*b2)/norm);
 		}
 
 		/// <summary>
 		/// Возвращает окружность описанную вокруг данного треугольника.
 		/// </summary>
 		/// <returns>Окружность описанная вокруг данного треугольника.</returns>
+		/// <remarks>Если вершины треугольника лежат на одной прямой, центр и радиус окружности бесконечны или не являются числами (<see cref="double.NaN"/>).</remarks>
 		public Circle GetCircumscribed()
 		{
-			var center = GetCircumCenter();
-			var radius = (center - Point0).Length;
-			return new Circle(center, radius);
+			var offset = GetCircumCenterOffset();
+			return new Circle(Point0 + offset, offset.Length);
 		}
 
 		/// <summary>

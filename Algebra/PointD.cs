@@ -68,11 +68,11 @@ namespace Ruzil3D.Algebra
 		}
 		
 		/// <summary>
-		/// Вычитает элементы массива от исходного вектора.
+		/// Добавляет исходный вектор ко всем элементам массива.
 		/// </summary>
-		/// <param name="offset">Исходный вектор.</param>
-		/// <param name="points">Вычитаемый массив структур <see cref="PointD"/> которые вычитаются от исходного вектора <paramref name="offset"/>.</param>
-		/// <returns>Массив структур к элементы которого вычтены из <paramref name="offset"/>.</returns>
+		/// <param name="offset">Исходный добавляемый вектор.</param>
+		/// <param name="points">Массив структур <see cref="PointD"/> к которым добавляется вектор <paramref name="offset"/>.</param>
+		/// <returns>Массив структур к элементам которым добавлен <paramref name="offset"/>.</returns>
 		public static PointD[] operator +(PointD offset, PointD[] points)
 		{
 			return points + offset;
@@ -219,7 +219,8 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Возращает длину исходного вектора.
 		/// </summary>
-		public double Length => Math.Sqrt(X*X + Y*Y);
+		/// <remarks>Длина вычисляется без переполнения и потери точности и для очень длинных (с координатами больше 10¹⁵⁴), и для очень коротких (с координатами меньше 10⁻¹⁵⁴) векторов.</remarks>
+		public double Length => Point3D.GetLength(X*X + Y*Y, X, Y, 0, 0);
 
 		#endregion
 
@@ -265,7 +266,7 @@ namespace Ruzil3D.Algebra
 		{
 			var dx = X - point.X;
 			var dy = Y - point.Y;
-			return Math.Sqrt(dx*dx + dy*dy);
+			return Point3D.GetLength(dx*dx + dy*dy, dx, dy, 0, 0);
 		}
 
 		/// <summary>
