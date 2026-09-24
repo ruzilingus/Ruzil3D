@@ -451,9 +451,9 @@ namespace Ruzil3D.Algebra
 		#region Overrides
 
 		/// <summary>
-		/// Возвращает строковое представлеине данной матрицы.
+		/// Возвращает строковое представление данной матрицы.
 		/// </summary>
-		/// <returns>Строковое представлеине данной матрицы.</returns>
+		/// <returns>Строковое представление данной матрицы.</returns>
 		/// <remarks>
 		/// <code>
 		/// var matrix = new Matrix(new[] {new Vector(1, 2, 3), new Vector(3, 4)});

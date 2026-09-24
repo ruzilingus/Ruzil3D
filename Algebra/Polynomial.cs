@@ -1749,9 +1749,9 @@ namespace Ruzil3D.Algebra
 		#endregion
 
 		/// <summary>
-		/// Возвращает строковое представлеине исходного многочлена.
+		/// Возвращает строковое представление исходного многочлена.
 		/// </summary>
-		/// <returns>Строковое представлеине исходного многочлена.</returns>
+		/// <returns>Строковое представление исходного многочлена.</returns>
 		/// <remarks>
 		/// <code>
 		/// var pol = new Polynomial(0.5, -3, 4, -System.Math.PI);
@@ -1765,10 +1765,10 @@ namespace Ruzil3D.Algebra
 		}
 
 		/// <summary>
-		/// Возвращает строковое представлеине исходного многочлена.
+		/// Возвращает строковое представление исходного многочлена.
 		/// </summary>
 		/// <param name="format">Сведения об особенностях форматирования.</param>
-		/// <returns>Строковое представлеине исходного многочлена.</returns>
+		/// <returns>Строковое представление исходного многочлена.</returns>
 		public string ToString(string format)
 		{
 			format = string.IsNullOrEmpty(format) ? "x" : format;

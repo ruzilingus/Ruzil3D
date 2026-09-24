@@ -82,7 +82,7 @@ namespace Ruzil3D.Algebra
 		public int Length => Coefficients.Length;
 
 		/// <summary>
-		/// Возвращает значение, показывающее, являтся ли данный вектор нулевым.
+		/// Возвращает значение, показывающее, является ли данный вектор нулевым.
 		/// </summary>
 		/// <param name="x">Вектор.</param>
 		/// <returns>Значение <b>true</b>, если параметр <paramref name="x"/> равняется <see cref="Empty"/>; в противном случае — значение <b>false</b>.</returns>
@@ -386,9 +386,9 @@ namespace Ruzil3D.Algebra
 		}
 
 		/// <summary>
-		/// Возвращает строковое представлеине данного вектора.
+		/// Возвращает строковое представление данного вектора.
 		/// </summary>
-		/// <returns>Строковое представлеине данного вектора.</returns>
+		/// <returns>Строковое представление данного вектора.</returns>
 		public override string ToString()
 		{
 			var result = "";

@@ -23,7 +23,7 @@ namespace Ruzil3D.Algebra
 		public double Z;
 
 		/// <summary>
-		/// Представляет новый экземпляр класса <see cref="Point3D"/> с неинициализированными данными членов.
+		/// Представляет нулевой вектор (0, 0, 0). Совпадает со значением по умолчанию <c>default(Point3D)</c>.
 		/// </summary>
 		public static readonly Point3D Empty = new Point3D(0, 0, 0);
 
@@ -56,14 +56,14 @@ namespace Ruzil3D.Algebra
 		}
 
 		/// <summary>
-		/// Возвращает значение, показывающее, являтся ли данный вектор нулевым.
+		/// Возвращает значение, показывающее, является ли данный вектор нулевым.
 		/// </summary>
 		/// <param name="x">Вектор представленный структурой <see cref="Point3D"/>.</param>
 		/// <returns>Значение <b>true</b>, если параметр <paramref name="x"/> равняется <see cref="Empty"/>; в противном случае — значение <b>false</b>.</returns>
 		public static bool IsEmpty(Point3D x) => x == Empty;
 
 		/// <summary>
-		/// Возращает длину исходного вектора.
+		/// Возвращает длину исходного вектора.
 		/// </summary>
 		/// <remarks>Длина вычисляется без переполнения и потери точности и для очень длинных (с координатами больше 10¹⁵⁴), и для очень коротких (с координатами меньше 10⁻¹⁵⁴) векторов.</remarks>
 		public double Length => GetLength(X * X + Y * Y + Z * Z, X, Y, Z, 0);
@@ -405,9 +405,9 @@ namespace Ruzil3D.Algebra
 		}
 
 		/// <summary>
-		/// Возвращает строковое представлеине данной точки.
+		/// Возвращает строковое представление данной точки.
 		/// </summary>
-		/// <returns>Строковое представлеине данной точки.</returns>
+		/// <returns>Строковое представление данной точки.</returns>
 		public override string ToString()
 		{
 			/*

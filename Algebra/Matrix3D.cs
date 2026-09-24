@@ -28,7 +28,7 @@ namespace Ruzil3D.Algebra
 		#region Statics
 
 		/// <summary>
-		/// Представляет новый экземпляр класса <see cref="Matrix3D"/> с неинициализированными данными членов.
+		/// Представляет нулевую матрицу. Совпадает со значением по умолчанию <c>default(Matrix3D)</c>.
 		/// </summary>
 		public static readonly Matrix3D Empty = new Matrix3D(Point3D.Empty, Point3D.Empty, Point3D.Empty);
 
@@ -42,7 +42,7 @@ namespace Ruzil3D.Algebra
 		#region Properties
 
 		/// <summary>
-		/// Возвращает значение, показывающее, являтся ли данная матрица нулевой.
+		/// Возвращает значение, показывающее, является ли данная матрица нулевой.
 		/// </summary>
 		/// <param name="x">Матрица.</param>
 		/// <returns>Значение <b>true</b>, если параметр <paramref name="x"/> равняется <see cref="Empty"/>; в противном случае — значение <b>false</b>.</returns>
@@ -164,6 +164,9 @@ namespace Ruzil3D.Algebra
 		/// Возвращает обратную матрицу.
 		/// </summary>
 		/// <returns>Обратная матрица.</returns>
+		/// <remarks>Матрица обращается через присоединённую матрицу и определитель. Для вырожденной матрицы (с нулевым определителем)
+		/// исключение не выбрасывается, а элементы результата равны ±∞ или NaN, в отличие от <see cref="Matrix.GetInverse"/>.
+		/// Поэтому вырожденность нужно проверять заранее по определителю (<see cref="GetDeterminant"/>).</remarks>
 		public Matrix3D GetInvert()
 		{
 			return GetAdjugate(1/GetDeterminant());
@@ -176,6 +179,8 @@ namespace Ruzil3D.Algebra
 		/// </summary>
 		/// <param name="y">Правая часть системы.</param>
 		/// <returns>Решение системы из трех уравнений A <i>x</i> = <paramref name="y"/>.</returns>
+		/// <remarks>Решение вычисляется через обратную матрицу (<see cref="GetInvert"/>), поэтому для вырожденной матрицы исключение
+		/// не выбрасывается, а координаты результата равны ±∞ или NaN.</remarks>
 		public Point3D Resolve(Point3D y)
 		{
 			return GetInvert()*y;
@@ -545,9 +550,9 @@ namespace Ruzil3D.Algebra
 		public bool IsNaN => Line1.IsNaN || Line2.IsNaN || Line3.IsNaN;
 
 		/// <summary>
-		/// Возвращает строковое представлеине данной матрицы.
+		/// Возвращает строковое представление данной матрицы.
 		/// </summary>
-		/// <returns>Строковое представлеине данной матрицы.</returns>
+		/// <returns>Строковое представление данной матрицы.</returns>
 		/// <remarks>
 		/// <code>
 		/// var matrix = Matrix3D.GetRotation(Math.PI, new Point3D(1, 1, 1));

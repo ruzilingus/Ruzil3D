@@ -19,7 +19,7 @@ namespace Ruzil3D.Algebra
 		public readonly Point3D U;
 
 		/// <summary>
-		/// Представляет новый экземпляр структуры <see cref="Quaternion"/> с неинициализированными данными членов.
+		/// Представляет нулевой кватернион. Совпадает со значением по умолчанию <c>default(Quaternion)</c>.
 		/// </summary>
 		public static readonly Quaternion Empty = new Quaternion(0, Point3D.Empty);
 
@@ -370,9 +370,9 @@ namespace Ruzil3D.Algebra
 		}
 
 		/// <summary>
-		/// Возвращает строковое представлеине данного кватерниона.
+		/// Возвращает строковое представление данного кватерниона.
 		/// </summary>
-		/// <returns>Строковое представлеине данного кватерниона.</returns>
+		/// <returns>Строковое представление данного кватерниона.</returns>
 		/// <remarks>
 		/// <code>
 		/// var q = Quaternion.GetRotation(Math.PI, new Point3D(1, 1, 1));
