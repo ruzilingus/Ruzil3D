@@ -537,6 +537,36 @@ namespace Ruzil3D.Tests
 		}
 
 		[Fact]
+		public void NumberInfo_SubnormalValues_DoNotHang()
+		{
+			// Прежде множитель 10^(-order) у чисел меньше 1e-308 был бесконечным, и вычисление Epsilon не завершалось.
+			foreach (var value in new[] {1.76e-309, double.Epsilon, -3e-320})
+			{
+				var info = new CStatic.NumberInfo(value);
+				Assert.True(info.Epsilon >= 0);
+				Assert.False(string.IsNullOrEmpty(info.StringValue));
+				Assert.False(string.IsNullOrEmpty(info.ToString()));
+			}
+		}
+
+		[Fact]
+		public void DoubleToString_NegativeValuesMirrorPositive()
+		{
+			// Отрицательное число выводится как модуль со знаком. Прежде половины округлялись вверх и у отрицательных чисел:
+			// -12345.5 выводилось как -1.2345·10⁴, а 12345.5 — как 1.2346·10⁴.
+			TestUtil.WithCulture("", () =>
+			{
+				foreach (var value in new[] {12345.5, 4506250000, 99999.5, 123455000, 0.12345, 1e-310})
+				{
+					Assert.Equal("-" + CStatic.DoubleToString(value), CStatic.DoubleToString(-value));
+					Assert.Equal("-" + CStatic.DoubleToStringSimple(value, 5), CStatic.DoubleToStringSimple(-value, 5));
+				}
+
+				return 0;
+			});
+		}
+
+		[Fact]
 		public void NumberInfo_EpsilonIsDistanceToShortNotation()
 		{
 			var info = new CStatic.NumberInfo(1.0000001);

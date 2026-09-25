@@ -795,17 +795,21 @@ namespace Ruzil3D.Utility
 				var value = Abs(DoubleValue);
 
 				var order = (int)Floor(GetOrder(value));
-				var normVal = value*Exp10(-order);
+
+				//У чисел меньше примерно 10⁻³⁰⁸ множитель 10^(-order) не представим в double: прежде normVal был
+				//бесконечным, minor — NaN, и цикл ниже не завершался. Такие числа масштабируются в два шага.
+				var normVal = ScaleByPowerOf10(value, -order);
 
 				double major;
 				double minor;
 
-
-				while (true)
+				//Для конечного normVal цикл завершается не более чем за двадцать с небольшим шагов: после них у normVal
+				//не остаётся дробной части. Ограничение числа шагов — страховка.
+				for (var step = 0; ; step++)
 				{
 					major = Floor(normVal);
 					minor = normVal - major;
-					if (minor < 0.000001)
+					if (minor < 0.000001 || step >= 400 || double.IsInfinity(normVal))
 					{
 						break;
 					}
@@ -821,12 +825,29 @@ namespace Ruzil3D.Utility
 					normVal *= 10D;
 				}
 
-				var factor = sign*Exp10(order);
-				_omega = minor.Equals(0D) ? DoubleValue : major*factor;
+				_omega = minor.Equals(0D) || double.IsInfinity(normVal) ? DoubleValue : sign*ScaleByPowerOf10(major, order);
 				_epsilon = Abs(DoubleValue - Omega);
 				_eps = sign*Sign(value - Abs(Omega))*Epsilon;
 				//Epsilon = Omega.Equals(DoubleValue) ? 0 : minor*factor;
 
+			}
+
+			/// <summary>
+			/// Умножает число на 10^<paramref name="power"/> без переполнения и потери значимости промежуточного множителя.
+			/// </summary>
+			private static double ScaleByPowerOf10(double value, int power)
+			{
+				if (power > 300)
+				{
+					return value*Exp10(300)*Exp10(power - 300);
+				}
+
+				if (power < -300)
+				{
+					return value*Exp10(power + 300)*Exp10(-300);
+				}
+
+				return value*Exp10(power);
 			}
 
 			private double _omega;
@@ -1092,6 +1113,15 @@ namespace Ruzil3D.Utility
 				return;
 			}
 
+			if (num < 0)
+			{
+				//Отрицательное число выводится как модуль со знаком: округление половин вверх несимметрично, и прежде,
+				//например, -12345.5 выводилось как -1.2345·10⁴, а 12345.5 — как 1.2346·10⁴.
+				DoubleToStringSimple(-num, digits, out mantissa, out character);
+				mantissa = CultureInfo.CurrentCulture.NumberFormat.NegativeSign + mantissa;
+				return;
+			}
+
 			//var order = 10;
 
 			var exp1 = Exp10(digits);
@@ -1288,11 +1318,22 @@ namespace Ruzil3D.Utility
 		/// <param name="values">Числа, однозначно задающие объект.</param>
 		/// <returns>Ключ кэша.</returns>
 		/// <remarks>Ключ строится по значениям, а не по объекту: прежде ключом служили изменяемые структуры и хэш-код
-		/// массива, и кэш возвращал устаревшие или чужие строки. В ключ входит текущая культура, от которой зависит вывод чисел.</remarks>
+		/// массива, и кэш возвращал устаревшие или чужие строки. В ключ входят текущая культура и символы её формата чисел,
+		/// от которых зависит вывод: культура, изменённая пользователем, может иметь то же имя, что и стандартная.</remarks>
 		internal static string GetToStringHashKey(string kind, string format, IEnumerable<double> values)
 		{
+			var culture = CultureInfo.CurrentCulture;
+			var numberFormat = culture.NumberFormat;
 			var key = new StringBuilder();
-			key.Append(kind).Append('|').Append(CultureInfo.CurrentCulture.Name).Append('|').Append(format).Append('|');
+			key.Append(kind).Append('|').Append(culture.Name).Append('|')
+				.Append(numberFormat.NumberDecimalSeparator).Append('|')
+				.Append(numberFormat.NumberGroupSeparator).Append('|')
+				.Append(numberFormat.NegativeSign).Append('|')
+				.Append(numberFormat.PositiveSign).Append('|')
+				.Append(numberFormat.NaNSymbol).Append('|')
+				.Append(numberFormat.PositiveInfinitySymbol).Append('|')
+				.Append(numberFormat.NegativeInfinitySymbol).Append('|')
+				.Append(format).Append('|');
 
 			foreach (var value in values)
 			{

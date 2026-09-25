@@ -535,7 +535,7 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Форматирует значение текущего экземпляра с использованием заданного формата.
 		/// </summary>
-		/// <param name="format">Объект <see cref="T:System.String"/>, задающий формат вещественной и мнимой частей. Если он пуст или равен <b>null</b>, результат совпадает с <see cref="ToString()"/>.</param>
+		/// <param name="format">Объект <see cref="T:System.String"/>, задающий формат вещественной и мнимой частей. Если он пуст, равен <b>null</b> или не поддерживается числами <see cref="double"/> (например, "X"), результат совпадает с <see cref="ToString()"/>.</param>
 		/// <param name="formatProvider">Объект <see cref="T:System.IFormatProvider"/>, используемый для форматирования частей.</param><filterpriority>2</filterpriority>
 		/// <returns>
 		/// Объект <see cref="T:System.String"/> содержит значение текущего экземпляра в заданном формате,
@@ -549,6 +549,22 @@ namespace Ruzil3D.Algebra
 				return ToString();
 			}
 
+			try
+			{
+				return FormatParts(format, formatProvider);
+			}
+			catch (FormatException)
+			{
+				//Формат, который не поддерживают числа double (например, "X"), как и прежде, игнорируется.
+				return ToString();
+			}
+		}
+
+		/// <summary>
+		/// Форматирует вещественную и мнимую части с заданными форматом и провайдером.
+		/// </summary>
+		private string FormatParts(string format, IFormatProvider formatProvider)
+		{
 			if (0D.Equals(R) && 0D.Equals(I))
 			{
 				return 0D.ToString(format, formatProvider);

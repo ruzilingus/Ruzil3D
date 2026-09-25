@@ -619,11 +619,17 @@ namespace Ruzil3D
 		/// </summary>
 		/// <param name="num1">Первое число.</param>
 		/// <param name="num2">Второе число.</param>
-		/// <returns>Наибольший общий делитель.</returns>
+		/// <returns>Наибольший общий делитель или <see cref="double.NaN"/>, если оба числа равны нулю или одно из них — NaN или бесконечность.</returns>
 		public static double GreatestDivisor(double num1, double num2)
 		{
 			num1 = Abs(num1);
 			num2 = Abs(num2);
+
+			//Прежде для NaN и бесконечности остаток был NaN, и цикл ниже не завершался.
+			if (double.IsNaN(num1) || double.IsNaN(num2) || double.IsInfinity(num1) || double.IsInfinity(num2))
+			{
+				return double.NaN;
+			}
 
 			if (num1.Equals(0))
 			{

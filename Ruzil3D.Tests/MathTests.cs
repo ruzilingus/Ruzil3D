@@ -45,6 +45,21 @@ namespace Ruzil3D.Tests
 		}
 
 		[Fact]
+		public void GreatestDivisor_DoubleNaNOrInfinity_DoesNotHang()
+		{
+			// Прежде остаток был NaN, и алгоритм Евклида не завершался.
+			Assert.True(double.IsNaN(Math.GreatestDivisor(1D, double.NaN)));
+			Assert.True(double.IsNaN(Math.GreatestDivisor(double.PositiveInfinity, 6D)));
+
+			var numerator = double.NaN;
+			var divider = 4D;
+			Math.Simplify(ref numerator, ref divider);
+			Assert.True(double.IsNaN(numerator));
+
+			Assert.Equal(1.5, Math.GreatestDivisor(4.5, 6D));
+		}
+
+		[Fact]
 		public void GreatestDivisor_Fractions()
 		{
 			var gcd = Math.GreatestDivisor(new Fraction(1, 2), new Fraction(1, 3));
