@@ -688,10 +688,12 @@ namespace Ruzil3D.Calculus
 		/// <remarks>
 		/// <para>Границы можно задавать в любом порядке. Если функция равна нулю на границе, возвращается эта граница.
 		/// Иначе значения функции на границах должны иметь разные знаки. Значение <see cref="double.NaN"/> в границе
-		/// или в значении функции означает, что корень не найден.</para>
+		/// или в значении функции на конечной границе означает, что корень не найден.</para>
 		/// <para>Для бесконечной границы (а также для <see cref="double.MinValue"/> и <see cref="double.MaxValue"/>) сначала ищется
 		/// конечная точка, в которой знак функции отличается от знака на другой границе: аргумент удваивается, начиная с ±1
-		/// или с другой границы, если она дальше от нуля.</para>
+		/// или с другой границы, если она дальше от нуля. Значение <see cref="double.NaN"/> на такой границе (например, у sin(x)/x
+		/// или cos(x) на бесконечности), как и прежде, не мешает поиску. Если обе границы бесконечны и значения на них неизвестны,
+		/// знак сравнивается со значением в нуле.</para>
 		/// <para>Отрезок делится пополам, пока функция не обратится в нуль или концы отрезка не станут соседними числами двойной точности;
 		/// из двух концов возвращается тот, где модуль функции меньше. Если этот модуль больше, чем на обоих концах исходного отрезка
 		/// (для бесконечной границы — в найденной конечной точке), то знак меняется в точке разрыва (например, в полюсе функции 1/x),
@@ -713,6 +715,14 @@ namespace Ruzil3D.Calculus
 				return double.NaN;
 			}
 
+			//Прежде считалось, что a < b, и для бесконечной границы, заданной первой (x − 1 на [+∞, 0]), возвращалась бесконечность.
+			if (b < a)
+			{
+				var save = a;
+				a = b;
+				b = save;
+			}
+
 			var aValue = function(a);
 			var bValue = function(b);
 
@@ -730,28 +740,62 @@ namespace Ruzil3D.Calculus
 				return b;
 			}
 
-			//Знаки сравниваются, а не перемножаются: прежде значения по модулю меньше 1e-12 пропускали проверку смены знака
-			//(x + 1e-13 на [0, 5] давал «корень» 5), произведение малых значений обращалось в нуль,
-			//а значение NaN на границе (sqrt(x) − 1 на [−1, 4]) не отклонялось.
-			if (double.IsNaN(aValue) || double.IsNaN(bValue) || (aValue < 0) == (bValue < 0))
+			var aInfinite = a <= double.MinValue;
+			var bInfinite = b >= double.MaxValue;
+
+			//Значение NaN на конечной границе (sqrt(x) − 1 на [−1, 4]) означает, что корень не найден: прежде оно не отклонялось.
+			//На бесконечной границе функция может не иметь предела (cos x) или давать NaN (sin(x)/x, x·e⁻ˣ): тогда, как и прежде,
+			//точка со сменой знака ищется от конечной стороны.
+			if (double.IsNaN(aValue) && !aInfinite || double.IsNaN(bValue) && !bInfinite)
 			{
 				return double.NaN;
 			}
 
-			//Прежде считалось, что a < b, и для бесконечной границы, заданной первой (x − 1 на [+∞, 0]), возвращалась бесконечность.
-			if (b < a)
+			if (aInfinite && bInfinite && (double.IsNaN(aValue) || double.IsNaN(bValue)))
 			{
-				var save = a;
-				a = b;
-				b = save;
+				//Обе границы бесконечны, и значение хотя бы на одной неизвестно: знак сравнивается со значением в нуле.
+				//Если же другая граница конечна, точка со сменой знака ищется от неё (ниже).
+				var zeroValue = function(0D);
 
-				save = aValue;
-				aValue = bValue;
-				bValue = save;
+				// ReSharper disable once CompareOfFloatsByEqualityOperator
+				if (zeroValue == 0)
+				{
+					result = true;
+					return 0D;
+				}
+
+				if (double.IsNaN(zeroValue))
+				{
+					return double.NaN;
+				}
+
+				if (FindFiniteBound(function, ref a, ref aValue, 0D, zeroValue, -1))
+				{
+					b = 0D;
+					bValue = zeroValue;
+				}
+				else if (FindFiniteBound(function, ref b, ref bValue, 0D, zeroValue, 1))
+				{
+					a = 0D;
+					aValue = zeroValue;
+				}
+				else
+				{
+					return double.NaN;
+				}
+
+				aInfinite = bInfinite = false;
+			}
+
+			//Знаки сравниваются, а не перемножаются: прежде значения по модулю меньше 1e-12 пропускали проверку смены знака
+			//(x + 1e-13 на [0, 5] давал «корень» 5), а произведение малых значений обращалось в нуль.
+			if (!double.IsNaN(aValue) && !double.IsNaN(bValue) && (aValue < 0) == (bValue < 0))
+			{
+				return double.NaN;
 			}
 
 			//Для бесконечной границы ищется конечная точка со сменой знака; в ней функция может оказаться равной нулю.
-			if (a <= double.MinValue)
+			if (aInfinite)
 			{
 				if (!FindFiniteBound(function, ref a, ref aValue, b, bValue, -1))
 				{
@@ -766,7 +810,7 @@ namespace Ruzil3D.Calculus
 				}
 			}
 
-			if (b >= double.MaxValue)
+			if (bInfinite)
 			{
 				if (!FindFiniteBound(function, ref b, ref bValue, a, aValue, 1))
 				{
@@ -886,8 +930,8 @@ namespace Ruzil3D.Calculus
 
 			if (!double.IsInfinity(bound))
 			{
-				//Граница double.MinValue или double.MaxValue конечна: отрезок до неё делится пополам.
-				return true;
+				//Граница double.MinValue или double.MaxValue конечна: отрезок до неё делится пополам, если на ней знак другой.
+				return !double.IsNaN(boundValue) && (boundValue < 0) != (otherValue < 0);
 			}
 
 			//Прежде при неудачном поиске граница оставалась бесконечной и возвращалась как корень.

@@ -463,6 +463,34 @@ namespace Ruzil3D.Tests
 		}
 
 		[Fact]
+		public void FindRoot_NaNAtInfiniteBound_SearchesFromFiniteSide()
+		{
+			// Как и в исходной версии, значение NaN на бесконечной границе не мешает поиску: у sin(x)/x, x·e⁻ˣ, cos x на
+			// бесконечности значения нет. Промежуточная версия в этих случаях считала, что корня нет.
+			bool result;
+
+			Close(1.895494267033981, FindRoot(x => System.Math.Sin(x)/x - 0.5, 0.1, double.PositiveInfinity, out result), 1e-12);
+			Assert.True(result);
+
+			Close(3.577152063957297, FindRoot(x => x*System.Math.Exp(-x) - 0.1, 1, double.PositiveInfinity, out result), 1e-12);
+			Assert.True(result);
+
+			Close(System.Math.PI/2, FindRoot(System.Math.Cos, 0, double.PositiveInfinity, out result), 1e-12);
+			Assert.True(result);
+
+			Close(1, FindRoot(x => x*x/(x*x + 1) - 0.5, 0, double.MaxValue, out result), 1e-12);
+			Assert.True(result);
+
+			// Обе границы бесконечны: знак сравнивается со значением в нуле.
+			Close(1, System.Math.Abs(FindRoot(x => x*x/(x*x + 1) - 0.5, double.NegativeInfinity, double.PositiveInfinity, out result)), 1e-12);
+			Assert.True(result);
+
+			// Значение NaN на конечной границе по-прежнему означает, что корень не найден.
+			Assert.True(double.IsNaN(FindRoot(x => System.Math.Sqrt(x) - 1, -1, 4, out result)));
+			Assert.False(result);
+		}
+
+		[Fact]
 		public void FindRoot_RejectsNaN()
 		{
 			// Прежде значение NaN на границе и граница NaN принимались: sqrt(x) − 1 на [−1, 4] давал «корень» 4.
