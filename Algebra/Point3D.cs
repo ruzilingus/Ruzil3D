@@ -1,4 +1,5 @@
-﻿using static Ruzil3D.Math;
+﻿using System.Runtime.CompilerServices;
+using static Ruzil3D.Math;
 
 namespace Ruzil3D.Algebra
 {
@@ -66,7 +67,11 @@ namespace Ruzil3D.Algebra
 		/// Возвращает длину исходного вектора.
 		/// </summary>
 		/// <remarks>Длина вычисляется без переполнения и потери точности и для очень длинных (с координатами больше 10¹⁵⁴), и для очень коротких (с координатами меньше 10⁻¹⁵⁴) векторов.</remarks>
-		public double Length => GetLength(X * X + Y * Y + Z * Z, X, Y, Z, 0);
+		public double Length
+		{
+			[MethodImpl(AggressiveInlining)]
+			get { return GetLength(X*X + Y*Y + Z*Z, X, Y, Z, 0); }
+		}
 
 		/// <summary>
 		/// Возвращает условие показывающее, что хотя бы один из компонентов X, Y или Z не является числом.
@@ -89,8 +94,13 @@ namespace Ruzil3D.Algebra
 		/// <param name="z">Третья координата.</param>
 		/// <param name="w">Четвертая координата.</param>
 		/// <returns>Длина вектора.</returns>
+		[MethodImpl(AggressiveInlining)]
 		internal static double GetLength(double sum, double x, double y, double z, double w)
 		{
+			//Метод встраивается целиком, вместе с редкой веткой масштабирования: вызов в ней, даже невыполняемый, заставлял
+			//JIT сохранять в памяти вещественные переменные вызывающего цикла (на x64 вне Windows все регистры XMM
+			//затираются вызовом), и длина в плотном цикле считалась на треть медленнее прежней.
+
 			//Обычный случай: сумма квадратов не переполнилась и не потеряла точность, результат прежний.
 			if (sum >= MinNormal && sum <= double.MaxValue)
 			{
@@ -101,6 +111,13 @@ namespace Ruzil3D.Algebra
 			{
 				return double.NaN;
 			}
+
+			// ReSharper disable CompareOfFloatsByEqualityOperator
+			if (x == 0 && y == 0 && z == 0 && w == 0)
+			{
+				return 0;
+			}
+			// ReSharper restore CompareOfFloatsByEqualityOperator
 
 			//Сумма квадратов переполняется для координат больше ~1e154 и теряет точность (вплоть до нуля) для координат
 			//меньше ~1e-154: прежде длина (1e200, 1e200, 0) была бесконечной, а длина (3e-170, 4e-170, 0) — нулевой.
@@ -315,9 +332,12 @@ namespace Ruzil3D.Algebra
 		/// </summary>
 		/// <param name="point">Вектор, между которым возвращается косинус угла.</param>
 		/// <returns>Косинус угла между текущим вектором и вектором заданным параметром <paramref name="point"/>: число от -1 до 1. Если хотя бы один из векторов нулевой, возвращается <see cref="double.NaN"/>.</returns>
+		[MethodImpl(AggressiveInlining)]
 		public double Cos(Point3D point)
 		{
-			var length = Length * point.Length;
+			var length1 = Length;
+			var length2 = point.Length;
+			var length = length1 * length2;
 
 			double cos;
 			if (length >= MinNormal && length <= double.MaxValue)
@@ -328,12 +348,12 @@ namespace Ruzil3D.Algebra
 			{
 				//Произведение длин (и скалярное произведение) переполняется для очень длинных векторов и теряет точность
 				//для очень коротких: тогда векторы предварительно приводятся к единичной длине.
-				cos = (this / Length).DotProduct(point / point.Length);
+				cos = (this / length1).DotProduct(point / length2);
 			}
 
 			//Погрешность округления выводила косинус за пределы [-1, 1] (для одинаковых векторов (1, 1, 1) получалось
 			//1.0000000000000002), и Acos возвращал NaN. NaN для нулевого вектора сохраняется.
-			return Max(-1D, Min(1D, cos));
+			return cos > 1 ? 1 : cos < -1 ? -1 : cos;
 		}
 
 		/// <summary>
@@ -362,12 +382,13 @@ namespace Ruzil3D.Algebra
 		/// </summary>
 		/// <param name="point">Точка, до которой нужно вернуть расстояние.</param>
 		/// <returns>Расстояние от текущей точки до точки заданной параметром <paramref name="point"/>.</returns>
+		[MethodImpl(AggressiveInlining)]
 		public double Distance(Point3D point)
 		{
 			var dx = X - point.X;
 			var dy = Y - point.Y;
 			var dz = Z - point.Z;
-			return GetLength(dx * dx + dy * dy + dz * dz, dx, dy, dz, 0);
+			return GetLength(dx*dx + dy*dy + dz*dz, dx, dy, dz, 0);
 		}
 
 		/// <summary>

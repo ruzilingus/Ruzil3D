@@ -19,7 +19,25 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		/// <value>Матрица преобразования пространства.</value>
 		/// <remarks>Чтобы преобразование было биективным, необходимо чтобы матрица была обратимой, то есть быть невырожденной. По умолчанию это поле приравнено тождественной матрице.</remarks>
-		public Matrix3D Matrix { get; protected set; }
+		public Matrix3D Matrix
+		{
+			get { return _matrix; }
+			protected set
+			{
+				_matrix = value;
+
+				//Кватернион изометрии, вычисленный по прежней матрице, больше не действителен.
+				QuaternionCache = null;
+			}
+		}
+
+		private Matrix3D _matrix;
+
+		/// <summary>
+		/// Кэш кватерниона поворота (см. <see cref="Isometry.Quaternion"/>): неизменяемый объект, который публикуется одной записью
+		/// ссылки и поэтому не может быть прочитан другим потоком частично записанным.
+		/// </summary>
+		internal volatile Isometry.QuaternionBox QuaternionCache;
 
 		/// <summary>
 		/// Получает точку на которую смещается центр координат при преобразовании.

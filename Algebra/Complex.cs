@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using Ruzil3D.Utility;
 using static Ruzil3D.Math;
 
@@ -128,9 +129,10 @@ namespace Ruzil3D.Algebra
 		/// <param name="x">Комплексное число-числитель.</param>
 		/// <param name="y">Комплексное число - знаменатель.</param>
 		/// <returns>Частное от деления <paramref name="x"/> на <paramref name="y"/>.</returns>
+		[MethodImpl(AggressiveInlining)]
 		public static Complex operator /(Complex x, Complex y)
 		{
-			if ((y.R.Equals(0D) && y.I.Equals(0D)) || (IsOrdinary(x.R, x.I) && IsOrdinary(y.R, y.I)))
+			if ((IsOrdinary(y.R, y.I) && IsOrdinary(x.R, x.I)) || (y.R.Equals(0D) && y.I.Equals(0D)))
 			{
 				var divider = y.Abs2;
 				return new Complex((x.R*y.R + x.I*y.I)/divider, (x.I*y.R - x.R*y.I)/divider);
@@ -195,9 +197,10 @@ namespace Ruzil3D.Algebra
 		/// <param name="x">Числитель с плавающей запятой двойной точности.</param>
 		/// <param name="y">Комплексное число - знаменатель.</param>
 		/// <returns>Частное от деления <paramref name="x"/> на <paramref name="y"/>.</returns>
+		[MethodImpl(AggressiveInlining)]
 		public static Complex operator /(double x, Complex y)
 		{
-			if ((y.R.Equals(0D) && y.I.Equals(0D)) || (IsOrdinary(x, 0D) && IsOrdinary(y.R, y.I)))
+			if ((IsOrdinary(y.R, y.I) && IsOrdinary(x, 0D)) || (y.R.Equals(0D) && y.I.Equals(0D)))
 			{
 				x /= y.Abs2;
 				return new Complex(x * y.R, - x * y.I);
@@ -343,25 +346,35 @@ namespace Ruzil3D.Algebra
 		private double Abs2 => R*R + I*I;
 
 		/// <summary>
-		/// Наибольшая по модулю часть «обычного» числа: для таких чисел R² + I² и произведения частей вычисляются
+		/// Наибольшая сумма модулей частей «обычного» числа: для таких чисел R² + I² и произведения частей вычисляются
 		/// без переполнения и потери точности, и используются прежние формулы с прежними результатами.
 		/// </summary>
-		private const double OrdinaryMax = 1E+75;
+		private const double OrdinaryMax = 2E+75;
 
 		/// <summary>
-		/// Наименьшая по модулю ненулевая наибольшая часть «обычного» числа.
+		/// Наименьшая ненулевая сумма модулей частей «обычного» числа.
 		/// </summary>
 		private const double OrdinaryMin = 1E-75;
 
+		/// <summary>
+		/// Возвращает значение, показывающее, что сумма модулей частей числа равна нулю или лежит в пределах от
+		/// <see cref="OrdinaryMin"/> до <see cref="OrdinaryMax"/> (для NaN и бесконечностей — <b>false</b>).
+		/// </summary>
+		[MethodImpl(AggressiveInlining)]
 		private static bool IsOrdinary(double r, double i)
 		{
-			var max = System.Math.Max(System.Math.Abs(r), System.Math.Abs(i));
-			return max.Equals(0D) || (max >= OrdinaryMin && max <= OrdinaryMax);
+			//Сумма модулей не более чем вдвое больше наибольшего из них, а до переполнения и потери точности остаётся
+			//запас в 10⁷⁸ раз. Проверка суммы вместо наибольшего модуля обходится двумя сравнениями: она стоит на пути
+			//каждого деления.
+			var sum = System.Math.Abs(r) + System.Math.Abs(i);
+			// ReSharper disable once CompareOfFloatsByEqualityOperator
+			return (sum >= OrdinaryMin && sum <= OrdinaryMax) || sum == 0;
 		}
 
 		/// <summary>
 		/// Делит (a + bi) на (c + di) по алгоритму Смита, не вычисляя c² + d².
 		/// </summary>
+		[MethodImpl(AggressiveInlining)]
 		private static Complex Divide(double a, double b, double c, double d)
 		{
 			if (System.Math.Abs(c) >= System.Math.Abs(d))
@@ -384,31 +397,33 @@ namespace Ruzil3D.Algebra
 		/// <value>Абсолютное значение (или величина) комплексного числа.</value>
 		public double Abs
 		{
-			get
+			[MethodImpl(AggressiveInlining)]
+			get { return IsOrdinary(R, I) ? System.Math.Sqrt(Abs2) : GetScaledAbs(R, I); }
+		}
+
+		/// <summary>
+		/// Вычисляет модуль числа с масштабированием.
+		/// </summary>
+		[MethodImpl(AggressiveInlining)]
+		private static double GetScaledAbs(double real, double imaginary)
+		{
+			//Модуль вычисляется с масштабированием. Прежде R² + I² переполнялось или обращалось в ноль:
+			//модуль (1e200, 1e200) был равен ∞, а (3e-200, 4e-200) — нулю.
+			var r = System.Math.Abs(real);
+			var i = System.Math.Abs(imaginary);
+			if (double.IsNaN(r) || double.IsNaN(i))
 			{
-				if (IsOrdinary(R, I))
-				{
-					return System.Math.Sqrt(Abs2);
-				}
-
-				//Модуль вычисляется с масштабированием. Прежде R² + I² переполнялось или обращалось в ноль:
-				//модуль (1e200, 1e200) был равен ∞, а (3e-200, 4e-200) — нулю.
-				var r = System.Math.Abs(R);
-				var i = System.Math.Abs(I);
-				if (double.IsNaN(r) || double.IsNaN(i))
-				{
-					return double.NaN;
-				}
-
-				if (double.IsInfinity(r) || double.IsInfinity(i))
-				{
-					return double.PositiveInfinity;
-				}
-
-				var max = r > i ? r : i;
-				var ratio = (r > i ? i : r)/max;
-				return max*System.Math.Sqrt(1D + ratio*ratio);
+				return double.NaN;
 			}
+
+			if (double.IsInfinity(r) || double.IsInfinity(i))
+			{
+				return double.PositiveInfinity;
+			}
+
+			var max = r > i ? r : i;
+			var ratio = (r > i ? i : r)/max;
+			return max*System.Math.Sqrt(1D + ratio*ratio);
 		}
 
 		/// <summary>

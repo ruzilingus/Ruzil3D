@@ -12,76 +12,105 @@ namespace Ruzil3D.Geometry
 		/// Получает кватернион поворота пространства соответствующий преобразованию.
 		/// </summary>
 		/// <value>Кватернион поворота пространства соответствующий преобразованию. Кватернионы q и -q задают один поворот; возвращается кватернион с неотрицательной вещественной частью.</value>
+		/// <remarks>Кватернион вычисляется при первом обращении и сохраняется, как и прежде.</remarks>
 		public Quaternion Quaternion
 		{
 			get
 			{
-				//Метод Шеппарда: сначала находится наибольшая по модулю компонента кватерниона (по наибольшему из следа
-				//и диагональных элементов матрицы), остальные — делением недиагональных сумм и разностей на нее.
-				//Прежде все компоненты вычислялись через квадратные корни диагональных комбинаций со знаками
-				//недиагональных разностей: для поворотов на π знаки обращались в ноль (кватернион (0; 0, 0, 0) или NaN),
-				//округление делало подкоренное выражение отрицательным (NaN), а малые углы терялись (1e-9 давал x = 0).
-				//Кватернион вычисляется при каждом обращении: прежний кэш в поле-структуре мог быть прочитан другим
-				//потоком частично записанным.
-				var matrix = Matrix;
-
-				var m11 = matrix.Line1.X;
-				var m12 = matrix.Line1.Y;
-				var m13 = matrix.Line1.Z;
-				var m21 = matrix.Line2.X;
-				var m22 = matrix.Line2.Y;
-				var m23 = matrix.Line2.Z;
-				var m31 = matrix.Line3.X;
-				var m32 = matrix.Line3.Y;
-				var m33 = matrix.Line3.Z;
-
-				var trace = m11 + m22 + m33;
-
-				double w, x, y, z;
-
-				if (trace >= m11 && trace >= m22 && trace >= m33)
+				//Прежний кэш в поле-структуре мог быть прочитан другим потоком частично записанным, а без кэша свойство
+				//было в 2–4.6 раза медленнее исходной версии. Теперь кэш — неизменяемый объект, публикуемый одной записью ссылки.
+				var cache = QuaternionCache;
+				if (cache == null)
 				{
-					//r = 2|w|
-					var r = Sqrt(1 + trace);
-					var f = 0.5/r;
-					w = r/2;
-					x = (m32 - m23)*f;
-					y = (m13 - m31)*f;
-					z = (m21 - m12)*f;
-				}
-				else if (m11 >= m22 && m11 >= m33)
-				{
-					//r = 2|x|
-					var r = Sqrt(1 + m11 - m22 - m33);
-					var f = 0.5/r;
-					w = (m32 - m23)*f;
-					x = r/2;
-					y = (m12 + m21)*f;
-					z = (m13 + m31)*f;
-				}
-				else if (m22 >= m33)
-				{
-					//r = 2|y|
-					var r = Sqrt(1 - m11 + m22 - m33);
-					var f = 0.5/r;
-					w = (m13 - m31)*f;
-					x = (m12 + m21)*f;
-					y = r/2;
-					z = (m23 + m32)*f;
-				}
-				else
-				{
-					//r = 2|z|
-					var r = Sqrt(1 - m11 - m22 + m33);
-					var f = 0.5/r;
-					w = (m21 - m12)*f;
-					x = (m13 + m31)*f;
-					y = (m23 + m32)*f;
-					z = r/2;
+					cache = new QuaternionBox(GetQuaternion());
+					QuaternionCache = cache;
 				}
 
-				return w < 0 ? new Quaternion(-w, -x, -y, -z) : new Quaternion(w, x, y, z);
+				return cache.Value;
 			}
+		}
+
+		/// <summary>
+		/// Неизменяемая оболочка кватерниона для кэша <see cref="Affinity.QuaternionCache"/>.
+		/// </summary>
+		internal sealed class QuaternionBox
+		{
+			public readonly Quaternion Value;
+
+			public QuaternionBox(Quaternion value)
+			{
+				Value = value;
+			}
+		}
+
+		/// <summary>
+		/// Вычисляет кватернион поворота по матрице преобразования.
+		/// </summary>
+		private Quaternion GetQuaternion()
+		{
+			//Метод Шеппарда: сначала находится наибольшая по модулю компонента кватерниона (по наибольшему из следа
+			//и диагональных элементов матрицы), остальные — делением недиагональных сумм и разностей на нее.
+			//Прежде все компоненты вычислялись через квадратные корни диагональных комбинаций со знаками
+			//недиагональных разностей: для поворотов на π знаки обращались в ноль (кватернион (0; 0, 0, 0) или NaN),
+			//округление делало подкоренное выражение отрицательным (NaN), а малые углы терялись (1e-9 давал x = 0).
+			var matrix = Matrix;
+
+			var m11 = matrix.Line1.X;
+			var m12 = matrix.Line1.Y;
+			var m13 = matrix.Line1.Z;
+			var m21 = matrix.Line2.X;
+			var m22 = matrix.Line2.Y;
+			var m23 = matrix.Line2.Z;
+			var m31 = matrix.Line3.X;
+			var m32 = matrix.Line3.Y;
+			var m33 = matrix.Line3.Z;
+
+			var trace = m11 + m22 + m33;
+
+			double w, x, y, z;
+
+			if (trace >= m11 && trace >= m22 && trace >= m33)
+			{
+				//r = 2|w|
+				var r = Sqrt(1 + trace);
+				var f = 0.5/r;
+				w = r/2;
+				x = (m32 - m23)*f;
+				y = (m13 - m31)*f;
+				z = (m21 - m12)*f;
+			}
+			else if (m11 >= m22 && m11 >= m33)
+			{
+				//r = 2|x|
+				var r = Sqrt(1 + m11 - m22 - m33);
+				var f = 0.5/r;
+				w = (m32 - m23)*f;
+				x = r/2;
+				y = (m12 + m21)*f;
+				z = (m13 + m31)*f;
+			}
+			else if (m22 >= m33)
+			{
+				//r = 2|y|
+				var r = Sqrt(1 - m11 + m22 - m33);
+				var f = 0.5/r;
+				w = (m13 - m31)*f;
+				x = (m12 + m21)*f;
+				y = r/2;
+				z = (m23 + m32)*f;
+			}
+			else
+			{
+				//r = 2|z|
+				var r = Sqrt(1 - m11 - m22 + m33);
+				var f = 0.5/r;
+				w = (m21 - m12)*f;
+				x = (m13 + m31)*f;
+				y = (m23 + m32)*f;
+				z = r/2;
+			}
+
+			return w < 0 ? new Quaternion(-w, -x, -y, -z) : new Quaternion(w, x, y, z);
 		}
 
 

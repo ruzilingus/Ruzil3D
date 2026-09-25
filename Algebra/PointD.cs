@@ -1,4 +1,5 @@
 ﻿using System.Drawing;
+using System.Runtime.CompilerServices;
 
 namespace Ruzil3D.Algebra
 {
@@ -220,7 +221,11 @@ namespace Ruzil3D.Algebra
 		/// Возвращает длину исходного вектора.
 		/// </summary>
 		/// <remarks>Длина вычисляется без переполнения и потери точности и для очень длинных (с координатами больше 10¹⁵⁴), и для очень коротких (с координатами меньше 10⁻¹⁵⁴) векторов.</remarks>
-		public double Length => Point3D.GetLength(X*X + Y*Y, X, Y, 0, 0);
+		public double Length
+		{
+			[MethodImpl(Math.AggressiveInlining)]
+			get { return Point3D.GetLength(X*X + Y*Y, X, Y, 0, 0); }
+		}
 
 		#endregion
 
@@ -262,6 +267,7 @@ namespace Ruzil3D.Algebra
 		/// </summary>
 		/// <param name="point">Точка, до которой нужно вернуть расстояние.</param>
 		/// <returns>Расстояние от текущей точки до точки заданной параметром <paramref name="point"/>.</returns>
+		[MethodImpl(Math.AggressiveInlining)]
 		public double Distance(PointD point)
 		{
 			var dx = X - point.X;

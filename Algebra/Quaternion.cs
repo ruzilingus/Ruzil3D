@@ -1,4 +1,5 @@
 ﻿using Ruzil3D.Utility;
+using System.Runtime.CompilerServices;
 using static Ruzil3D.Math;
 
 namespace Ruzil3D.Algebra
@@ -324,7 +325,11 @@ namespace Ruzil3D.Algebra
 		/// </summary>
 		/// <value>Абсолютное значение (или величина) кватерниона.</value>
 		/// <remarks>Модуль вычисляется без переполнения и потери точности и для очень больших (с компонентами больше 10¹⁵⁴), и для очень маленьких (с компонентами меньше 10⁻¹⁵⁴) кватернионов.</remarks>
-		public double Abs => Point3D.GetLength(GetAbs2(), W, U.X, U.Y, U.Z);
+		public double Abs
+		{
+			[MethodImpl(AggressiveInlining)]
+			get { return Point3D.GetLength(GetAbs2(), W, U.X, U.Y, U.Z); }
+		}
 
 		/// <summary>
 		/// Получает сопряженный кватернион.

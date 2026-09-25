@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using Ruzil3D.Algebra;
 
 namespace Ruzil3D
@@ -11,6 +12,12 @@ namespace Ruzil3D
 		#region Consts
 
 		//public static Func<double, double> SQRT = System.Math.Sqrt;
+
+		/// <summary>
+		/// Флаг MethodImplOptions.AggressiveInlining (.NET 4.5 и новее): в .NET 3.5 его нет в перечислении, и среда
+		/// выполнения этот флаг не учитывает.
+		/// </summary>
+		internal const MethodImplOptions AggressiveInlining = (MethodImplOptions) 256;
 
 		/// <summary>
 		/// Представляет константу ⅓.

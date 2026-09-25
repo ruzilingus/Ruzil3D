@@ -653,6 +653,38 @@ namespace Ruzil3D.Tests
 			}
 		}
 
+		/// <summary>
+		/// Изометрия, матрицу которой можно заменить (защищённый сеттер доступен наследникам).
+		/// </summary>
+		private sealed class ChangeableIsometry : Isometry
+		{
+			public ChangeableIsometry(double angle, Point3D axis) : base(angle, axis)
+			{
+			}
+
+			public void SetMatrix(Matrix3D matrix)
+			{
+				Matrix = matrix;
+			}
+		}
+
+		[Fact]
+		public void Isometry_Quaternion_FollowsMatrixChanges()
+		{
+			// Кватернион сохраняется после первого вычисления, но замена матрицы наследником его сбрасывает
+			// (прежде сохранённый кватернион оставался от прежней матрицы).
+			var isometry = new ChangeableIsometry(0.5, Point3D.UnitZ);
+			var first = isometry.Quaternion;
+			Assert.Equal(first, isometry.Quaternion);
+			Assert.Equal(System.Math.Sin(0.25), first.U.Z, 1e-15);
+
+			isometry.SetMatrix(Matrix3D.GetRotation(1.0, Point3D.UnitX));
+			var second = isometry.Quaternion;
+			Assert.Equal(System.Math.Cos(0.5), second.W, 1e-15);
+			Assert.Equal(System.Math.Sin(0.5), second.U.X, 1e-15);
+			Assert.Equal(0, second.U.Z, 1e-15);
+		}
+
 		[Fact]
 		public void Affinity_EqualsMatchesOperator()
 		{

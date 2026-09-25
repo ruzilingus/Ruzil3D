@@ -7,6 +7,7 @@ using Ruzil3D.Algebra;
 using Ruzil3D.Calculus;
 using Ruzil3D.Curves;
 using Ruzil3D.Filters;
+using Ruzil3D.Geometry;
 using Xunit;
 
 namespace Ruzil3D.Tests
@@ -165,6 +166,40 @@ namespace Ruzil3D.Tests
 			});
 
 			Assert.Empty(errors);
+		}
+
+		[Fact]
+		public void Isometry_Quaternion_ConcurrentFirstReads()
+		{
+			// Кватернион вычисляется при первом обращении и сохраняется. Прежний кэш в поле-структуре мог быть прочитан
+			// другим потоком частично записанным; теперь все потоки, одновременно читающие новый объект, получают одно значение.
+			const int count = 3000;
+			var random = new Random(8);
+			var angles = new double[count];
+			var axes = new Point3D[count];
+			for (var i = 0; i < count; i++)
+			{
+				angles[i] = random.NextDouble()*7;
+				axes[i] = new Point3D(random.NextDouble() - 0.5, random.NextDouble() - 0.5, random.NextDouble() - 0.5);
+			}
+
+			var expected = Enumerable.Range(0, count).Select(i => new Isometry(angles[i], axes[i]).Quaternion).ToArray();
+			var isometries = Enumerable.Range(0, count).Select(i => new Isometry(angles[i], axes[i])).ToArray();
+
+			var wrong = 0;
+			var errors = TestUtil.RunConcurrently(ThreadCount, thread =>
+			{
+				for (var i = 0; i < count; i++)
+				{
+					if (!isometries[i].Quaternion.Equals(expected[i]))
+					{
+						System.Threading.Interlocked.Increment(ref wrong);
+					}
+				}
+			});
+
+			Assert.Empty(errors);
+			Assert.Equal(0, wrong);
 		}
 
 		private static double[] Nodes(LegendrePolynomial polynomial)
