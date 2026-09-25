@@ -343,22 +343,27 @@ namespace Ruzil3D.Tests
 			var offset = new Point3D(0.1, 0.1, 0.9);
 			var plane = new Plane(pa, pb, pc);
 
-			// Прямая параллельна плоскости, но из-за округления знаменатель равен 5.55e-17: прежде возвращалась
-			// «точка пересечения» на расстоянии ~1e16.
+			// Как и прежде, параллельность проверяется точным сравнением с нулём. Прямая, параллельная плоскости лишь с точностью
+			// до округления (знаменатель 5.55e-17), пересекает её в далёкой точке, и эта точка возвращается.
 			var line = new Line3D(pa + offset, pc + offset);
-			var lineError = Assert.Throws<ArgumentException>(() => plane*line);
+			Assert.True((plane*line).Length > 1e12);
+
+			var lineError = Assert.Throws<ArgumentException>(() => new Plane(0, 0, 1, 0)*new Line3D(Point3D.UnitZ, Point3D.UnitZ + Point3D.UnitX));
 			Assert.Equal("Плоскость и прямая параллельны.", lineError.Message);
 
-			// Плоскости, построенные по сдвинутым точкам, параллельны: прежде возвращалась прямая на расстоянии ~1e15,
-			// а сообщение об ошибке зависело от порядка плоскостей.
-			var shifted = new Plane(pa + offset, pb + offset, pc + offset);
-			var error1 = Assert.Throws<ArgumentException>(() => plane*shifted);
-			var error2 = Assert.Throws<ArgumentException>(() => shifted*plane);
-			var error3 = Assert.Throws<ArgumentException>(() => plane*plane);
+			// Скользящий луч: синус угла с плоскостью 10⁻¹¹. Промежуточная версия с допуском 10⁻¹⁰ выбрасывала исключение.
+			var grazing = new Plane(0, 0, 1, 0)*new Line3D(Point3D.UnitZ, new Point3D(1e11, 0, 0));
+			Assert.Equal(1e11, grazing.X, 0);
+			Assert.Equal(0, grazing.Z, 12);
 
-			Assert.Equal("Плоскости параллельны!", error1.Message);
-			Assert.Equal(error1.Message, error2.Message);
-			Assert.Equal(error1.Message, error3.Message);
+			// Плоскости, построенные по сдвинутым точкам, параллельны лишь с точностью до округления: при любом порядке
+			// возвращается далёкая прямая (прежде в зависимости от порядка — прямая или исключение о совпадающих точках).
+			var shifted = new Plane(pa + offset, pb + offset, pc + offset);
+			Assert.True((plane*shifted).M.Length > 1e12);
+			Assert.True((shifted*plane).M.Length > 1e12);
+
+			var error3 = Assert.Throws<ArgumentException>(() => plane*plane);
+			Assert.Equal("Плоскости параллельны!", error3.Message);
 
 			// Прежде для нулевой нормали второй плоскости сообщалось о параллельности, а для первой — об ошибке параметра.
 			var notPlane = new Plane(0, 0, 0, 1);
@@ -376,6 +381,7 @@ namespace Ruzil3D.Tests
 			// Прежде прямые, отличающиеся знаком коэффициентов при C = 0 или погрешностью округления, были неравны.
 			Assert.True(new Line(new PointD(0, 0), new PointD(1, 1)) == new Line(new PointD(1, 1), new PointD(0, 0)));
 			Assert.True(new Line(1, -1, 0) == new Line(-2, 2, 0));
+			Assert.False(new Line(1, 1, 1e12) == new Line(1, 1, 1e12 + 99));
 			Assert.True(new Line(1, 2, 3) == new Line(-0.1, -0.2, -0.3));
 
 			var random = new Random(4);
@@ -430,21 +436,30 @@ namespace Ruzil3D.Tests
 			Assert.True(new Plane(Point3D.Empty, Point3D.UnitX, Point3D.UnitY) == new Plane(Point3D.Empty, Point3D.UnitY, Point3D.UnitX));
 			Assert.True(new Plane(1, 2, 3, 0) == new Plane(-2, -4, -6, 0));
 
+			// Уравнения сравниваются с допуском на погрешность приведения к нормальному виду (10⁻¹⁴), поэтому плоскость,
+			// построенная по тем же точкам в другом порядке, почти всегда равна исходной (прежде — примерно в 5% случаев).
+			// Для почти коллинеарных точек погрешность построения больше допуска, и, как и прежде, плоскости могут быть неравны.
 			var random = new Random(5);
+			var equal = 0;
 			for (var i = 0; i < 10000; i++)
 			{
 				var p0 = RandomPoint(random, 10);
 				var p1 = RandomPoint(random, 10);
 				var p2 = RandomPoint(random, 10);
 
-				Assert.True(new Plane(p0, p1, p2) == new Plane(p1, p2, p0));
-				Assert.True(new Plane(p0, p1, p2) == new Plane(p1, p0, p2));
-				Assert.True(new Plane(p0, p1, p2).Equals((object) new Plane(p2, p0, p1)));
+				if (new Plane(p0, p1, p2) == new Plane(p1, p2, p0)) equal++;
+				if (new Plane(p0, p1, p2) == new Plane(p1, p0, p2)) equal++;
+				if (new Plane(p0, p1, p2).Equals((object) new Plane(p2, p0, p1))) equal++;
 			}
+
+			Assert.True(equal >= 29900, equal.ToString());
 
 			Assert.False(new Plane(0, 0, 1, -1) == new Plane(0, 0, 1, -1.000001));
 			Assert.False(new Plane(0, 0, 1, -1) == new Plane(0, 0.000001, 1, -1));
 			Assert.True(new Plane(1, 0, 0, 0) != new Plane(0, 1, 0, 0));
+
+			// Допуск не должен делать равными заметно разные плоскости вдали от начала координат.
+			Assert.False(new Plane(0, 0, 1, 1e12) == new Plane(0, 0, 1, 1e12 + 99));
 		}
 
 		[Fact]
