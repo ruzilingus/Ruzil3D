@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -81,6 +80,106 @@ namespace Ruzil3D.Tests
 
 			Assert.Contains("0,1234568", russian);
 			Assert.Contains("0.1234568", invariant);
+		}
+
+		/// <summary>
+		/// Пользовательский ключ кэша, методы которого берут блокировку.
+		/// </summary>
+		private sealed class LockingKey
+		{
+			private readonly object _sync;
+
+			public LockingKey(object sync)
+			{
+				_sync = sync;
+			}
+
+			public override int GetHashCode()
+			{
+				lock (_sync)
+				{
+					return 42;
+				}
+			}
+
+			public override bool Equals(object obj)
+			{
+				lock (_sync)
+				{
+					return ReferenceEquals(this, obj);
+				}
+			}
+		}
+
+		[Fact]
+		public void ToStringCache_UserKeyWithLock_NoDeadlock()
+		{
+			// Прежде GetHashCode и Equals ключа выполнялись под общей блокировкой кэша. Поток, ждущий блокировку ключа
+			// внутри GetToStringHashValue, и поток, который держит её и вызывает ToString, ждали друг друга вечно.
+			var sync = new object();
+			var key = new LockingKey(sync);
+			Utility.CStatic.AddToStringHashValue(key, "value");
+
+			string found = null;
+			string text = null;
+			using (var locked = new System.Threading.ManualResetEvent(false))
+			{
+				var owner = new System.Threading.Thread(() =>
+				{
+					lock (sync)
+					{
+						locked.Set();
+						System.Threading.Thread.Sleep(200);
+						text = new Polynomial(0.5, -3, 7).ToString();
+					}
+				}) {IsBackground = true};
+
+				var reader = new System.Threading.Thread(() =>
+				{
+					locked.WaitOne();
+					found = Utility.CStatic.GetToStringHashValue(key);
+				}) {IsBackground = true};
+
+				owner.Start();
+				reader.Start();
+
+				Assert.True(owner.Join(10000), "Поток, вызвавший ToString, не завершился.");
+				Assert.True(reader.Join(10000), "Поток, читающий кэш, не завершился.");
+			}
+
+			Assert.Equal(new Polynomial(0.5, -3, 7).ToString(), text);
+			Assert.True(found == null || found == "value");
+		}
+
+		[Fact]
+		public void NumberInfo_ConcurrentFirstRead()
+		{
+			// Прежде признак вычисления погрешности устанавливался до самого вычисления: поток, читающий Epsilon
+			// одновременно с первым, мог получить ноль.
+			const double x = 1.0000001;
+			var expected = new Utility.CStatic.NumberInfo(x).Epsilon;
+			Assert.NotEqual(0, expected);
+
+			Utility.CStatic.NumberInfo shared = null;
+			var wrong = 0;
+			using (var barrier = new System.Threading.Barrier(ThreadCount, b => shared = new Utility.CStatic.NumberInfo(x)))
+			{
+				var errors = TestUtil.RunConcurrently(ThreadCount, thread =>
+				{
+					for (var i = 0; i < 3000; i++)
+					{
+						barrier.SignalAndWait();
+						if (!shared.Epsilon.Equals(expected))
+						{
+							System.Threading.Interlocked.Increment(ref wrong);
+						}
+					}
+				});
+
+				Assert.Empty(errors);
+			}
+
+			Assert.Equal(0, wrong);
 		}
 
 		[Fact]
@@ -283,16 +382,8 @@ namespace Ruzil3D.Tests
 		private static void ResetLegendreCaches()
 		{
 			const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Static;
-			var type = typeof(LegendrePolynomial);
-			var cacheLock = type.GetField("CacheLock", flags).GetValue(null);
-
-			lock (cacheLock)
-			{
-				foreach (var name in new[] {"Roots", "GaussianWeights", "Derivatives", "GaussianDenominators"})
-				{
-					((IList) type.GetField(name, flags).GetValue(null)).Clear();
-				}
-			}
+			var cache = (object[]) typeof(LegendrePolynomial).GetField("NodesCache", flags).GetValue(null);
+			Array.Clear(cache, 0, cache.Length);
 		}
 	}
 }

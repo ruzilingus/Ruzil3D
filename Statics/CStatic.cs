@@ -765,7 +765,10 @@ namespace Ruzil3D.Utility
 				DoubleValue = Convert.ToDouble(number);
 			}
 
-			private bool _isEpsilonCalculated;
+			//Признак устанавливается после записи результатов (volatile — чтобы другой поток, увидевший признак, увидел и их).
+			//Прежде признак устанавливался до вычисления, и другой поток мог прочитать нулевую погрешность.
+			//Одновременные вычисления дают одни и те же значения.
+			private volatile bool _isEpsilonCalculated;
 
 			private void CalculateEpsilon()
 			{
@@ -774,23 +777,17 @@ namespace Ruzil3D.Utility
 					return;
 				}
 
+				//Для нуля, бесконечностей и NaN погрешность остается нулевой.
+				if (!DoubleValue.Equals(0D) && !double.IsInfinity(DoubleValue) && !double.IsNaN(DoubleValue))
+				{
+					CalculateEpsilonCore();
+				}
+
 				_isEpsilonCalculated = true;
+			}
 
-				if (DoubleValue.Equals(0D))
-				{
-					return;
-				}
-
-				if (double.IsInfinity(DoubleValue))
-				{
-					return;
-				}
-
-				if (double.IsNaN(DoubleValue))
-				{
-					return;
-				}
-
+			private void CalculateEpsilonCore()
+			{
 				var sign = Sign(DoubleValue);
 				var value = Abs(DoubleValue);
 
@@ -825,9 +822,10 @@ namespace Ruzil3D.Utility
 					normVal *= 10D;
 				}
 
+				//Поля читаются напрямую, а не через свойства: свойства снова вызвали бы вычисление, пока признак не установлен.
 				_omega = minor.Equals(0D) || double.IsInfinity(normVal) ? DoubleValue : sign*ScaleByPowerOf10(major, order);
-				_epsilon = Abs(DoubleValue - Omega);
-				_eps = sign*Sign(value - Abs(Omega))*Epsilon;
+				_epsilon = Abs(DoubleValue - _omega);
+				_eps = sign*Sign(value - Abs(_omega))*_epsilon;
 				//Epsilon = Omega.Equals(DoubleValue) ? 0 : minor*factor;
 
 			}
@@ -1278,14 +1276,46 @@ namespace Ruzil3D.Utility
 		}
 
 
-		private static readonly Dictionary<object, string> ToStringHash = new Dictionary<object, string>();
+		#region ToString cache
+
+		/// <summary>
+		/// Запись общего кэша строковых представлений. Неизменяема и публикуется одной записью ссылки.
+		/// </summary>
+		private sealed class ToStringCacheEntry
+		{
+			public readonly object Key;
+			public readonly int Hash;
+			public readonly string Value;
+			public readonly int Stamp;
+
+			public ToStringCacheEntry(object key, int hash, string value, int stamp)
+			{
+				Key = key;
+				Hash = hash;
+				Value = value;
+				Stamp = stamp;
+			}
+		}
+
+		/// <summary>
+		/// Общий кэш строковых представлений: 128 наборов по две записи (не больше 256 записей, как и прежде).
+		/// </summary>
+		/// <remarks>Кэш работает без блокировок: запись заменяется одной записью ссылки, а чтение не может увидеть её
+		/// частично записанной. Прежде все обращения шли под общей блокировкой, и под ней выполнялись GetHashCode и Equals
+		/// ключей, в том числе пользовательских: ключ, методы которого сами берут блокировку, мог привести к взаимной
+		/// блокировке потоков. Ещё раньше кэш был словарём без блокировок, который одновременные вызовы портили.</remarks>
+		private static readonly object[] ToStringCache = new object[256];
+
+		//Порядковый номер записи: из двух записей набора заменяется более старая. Одновременные увеличения могут
+		//потеряться, это лишь немного меняет выбор заменяемой записи.
+		private static int _toStringCacheStamp;
 
 		/// <summary>
 		/// Сохраняет строковое представление объекта в общем кэше.
 		/// </summary>
 		/// <param name="key">Ключ кэша. Должен однозначно определяться значением объекта и не изменяться после сохранения.</param>
 		/// <param name="value">Строковое представление.</param>
-		/// <remarks>Метод потокобезопасен.</remarks>
+		/// <remarks>Метод потокобезопасен. Кэш ограничен по размеру, поэтому сохранённое значение может быть вытеснено.</remarks>
 		/// <exception cref="ArgumentNullException">Значение параметра <paramref name="key"/> или <paramref name="value"/> равно <b>null</b>.</exception>
 		public static void AddToStringHashValue(object key, string value)
 		{
@@ -1294,19 +1324,247 @@ namespace Ruzil3D.Utility
 				throw new ArgumentNullException(nameof(value), "Параметр \"" + nameof(value) + "\" не должен равняться null.");
 			}
 
-			//Все обращения к словарю выполняются под блокировкой: прежде запись и чтение шли без неё,
-			//и одновременные вызовы ToString из разных потоков необратимо портили словарь.
-			lock (ToStringHash)
+			if (ReferenceEquals(key, null))
 			{
-				if (ToStringHash.Count > 256)
+				throw new ArgumentNullException(nameof(key));
+			}
+
+			var hash = key.GetHashCode();
+			var index = GetToStringCacheSet(hash);
+
+			//В наборе заменяется запись с тем же ключом, иначе пустая, иначе более старая.
+			var first = (ToStringCacheEntry) System.Threading.Thread.VolatileRead(ref ToStringCache[index]);
+			var second = (ToStringCacheEntry) System.Threading.Thread.VolatileRead(ref ToStringCache[index + 1]);
+			if (!IsSameKey(first, key, hash) &&
+			    (IsSameKey(second, key, hash) || (first != null && (second == null || second.Stamp - first.Stamp < 0))))
+			{
+				index++;
+			}
+
+			//Ключ, построенный по массиву вызывающего кода, получает собственную копию до того, как станет виден другим потокам.
+			var valueKey = key as ToStringValueKey;
+			if (valueKey != null)
+			{
+				valueKey.Freeze();
+			}
+
+			var stamp = ++_toStringCacheStamp;
+			System.Threading.Thread.VolatileWrite(ref ToStringCache[index], new ToStringCacheEntry(key, hash, value, stamp));
+		}
+
+		/// <summary>
+		/// Возвращает строковое представление объекта из общего кэша.
+		/// </summary>
+		/// <param name="key">Ключ кэша.</param>
+		/// <returns>Сохранённое строковое представление или <b>null</b>, если его нет в кэше.</returns>
+		/// <remarks>Метод потокобезопасен.</remarks>
+		/// <exception cref="ArgumentNullException">Значение параметра <paramref name="key"/> равно <b>null</b>.</exception>
+		public static string GetToStringHashValue(object key)
+		{
+			if (ReferenceEquals(key, null))
+			{
+				throw new ArgumentNullException(nameof(key));
+			}
+
+			var hash = key.GetHashCode();
+			var index = GetToStringCacheSet(hash);
+
+			var entry = (ToStringCacheEntry) System.Threading.Thread.VolatileRead(ref ToStringCache[index]);
+			if (IsSameKey(entry, key, hash))
+			{
+				return entry.Value;
+			}
+
+			entry = (ToStringCacheEntry) System.Threading.Thread.VolatileRead(ref ToStringCache[index + 1]);
+			return IsSameKey(entry, key, hash) ? entry.Value : null;
+		}
+
+		/// <summary>
+		/// Возвращает индекс первой записи набора кэша для хэш-кода ключа.
+		/// </summary>
+		private static int GetToStringCacheSet(int hash)
+		{
+			//Биты хэш-кода перемешиваются: у близких хэш-кодов младшие биты часто совпадают.
+			var mixed = unchecked((uint) hash*2654435761U);
+			return (int) (mixed >> 25) << 1;
+		}
+
+		private static bool IsSameKey(ToStringCacheEntry entry, object key, int hash)
+		{
+			//Как и в словаре, сохранённый ключ сравнивается с заданным методом Equals сохранённого ключа.
+			return entry != null && entry.Hash == hash && entry.Key.Equals(key);
+		}
+
+		/// <summary>
+		/// Культура и символы её формата чисел, от которых зависит строковое представление.
+		/// </summary>
+		private sealed class CultureSignature
+		{
+			private readonly string[] _texts;
+			public readonly int Hash;
+
+			public CultureSignature(string[] texts)
+			{
+				_texts = texts;
+
+				var hash = 0;
+				foreach (var text in texts)
 				{
-					for (var i = 0; i < 128; i++)
+					hash = unchecked(hash*31 + (text == null ? 0 : text.GetHashCode()));
+				}
+
+				Hash = hash;
+			}
+
+			/// <summary>
+			/// Возвращает символы культуры и её формата чисел.
+			/// </summary>
+			public static string[] GetTexts(CultureInfo culture, NumberFormatInfo numberFormat)
+			{
+				return new[]
+				{
+					culture.Name,
+					numberFormat.NumberDecimalSeparator, numberFormat.NumberGroupSeparator,
+					numberFormat.NegativeSign, numberFormat.PositiveSign, numberFormat.NaNSymbol,
+					numberFormat.PositiveInfinitySymbol, numberFormat.NegativeInfinitySymbol
+				};
+			}
+
+			/// <summary>
+			/// Проверяет, что символы культуры и формата чисел совпадают с сохранёнными.
+			/// </summary>
+			public bool Matches(CultureInfo culture, NumberFormatInfo numberFormat)
+			{
+				//Свойства обычно возвращают те же экземпляры строк, поэтому сравнение сводится к сравнению ссылок.
+				return
+					string.Equals(_texts[0], culture.Name) &&
+					string.Equals(_texts[1], numberFormat.NumberDecimalSeparator) &&
+					string.Equals(_texts[2], numberFormat.NumberGroupSeparator) &&
+					string.Equals(_texts[3], numberFormat.NegativeSign) &&
+					string.Equals(_texts[4], numberFormat.PositiveSign) &&
+					string.Equals(_texts[5], numberFormat.NaNSymbol) &&
+					string.Equals(_texts[6], numberFormat.PositiveInfinitySymbol) &&
+					string.Equals(_texts[7], numberFormat.NegativeInfinitySymbol);
+			}
+
+			public bool ContentEquals(CultureSignature other)
+			{
+				if (ReferenceEquals(this, other))
+				{
+					return true;
+				}
+
+				if (other.Hash != Hash)
+				{
+					return false;
+				}
+
+				for (var i = 0; i < _texts.Length; i++)
+				{
+					if (!string.Equals(_texts[i], other._texts[i]))
 					{
-						ToStringHash.Remove(ToStringHash.Keys.First());
+						return false;
 					}
 				}
 
-				ToStringHash[key] = value;
+				return true;
+			}
+		}
+
+		//Последняя использованная культура: её символы не приходится заново собирать и хэшировать при каждом обращении.
+		private static volatile CultureSignature _cultureSignature;
+
+		private static CultureSignature GetCultureSignature()
+		{
+			var culture = CultureInfo.CurrentCulture;
+			var numberFormat = culture.NumberFormat;
+
+			var signature = _cultureSignature;
+			if (signature == null || !signature.Matches(culture, numberFormat))
+			{
+				signature = new CultureSignature(CultureSignature.GetTexts(culture, numberFormat));
+				_cultureSignature = signature;
+			}
+
+			return signature;
+		}
+
+		/// <summary>
+		/// Ключ общего кэша для объекта, заданного набором чисел: вид объекта, формат, культура, символы формата чисел
+		/// и сами числа (побитово).
+		/// </summary>
+		private sealed class ToStringValueKey
+		{
+			private readonly string _kind;
+			private readonly string _format;
+			private readonly CultureSignature _culture;
+			private readonly int _hash;
+
+			//До сохранения в кэше ключ ссылается на массив вызывающего кода, а при сохранении получает свою копию:
+			//так при попадании в кэш массив не копируется.
+			private double[] _values;
+			private bool _frozen;
+
+			public ToStringValueKey(string kind, string format, CultureSignature culture, double[] values)
+			{
+				_kind = kind;
+				_format = format;
+				_culture = culture;
+				_values = values;
+
+				var hash = unchecked(culture.Hash*31 + values.Length);
+				hash = unchecked(hash*31 + (kind == null ? 0 : kind.GetHashCode()));
+				hash = unchecked(hash*31 + (format == null ? 0 : format.GetHashCode()));
+				foreach (var value in values)
+				{
+					var bits = BitConverter.DoubleToInt64Bits(value);
+					hash = unchecked(hash*31 + ((int) bits ^ (int) (bits >> 32)));
+				}
+
+				_hash = hash;
+			}
+
+			/// <summary>
+			/// Заменяет массив вызывающего кода собственной копией. Вызывается до сохранения ключа в кэше.
+			/// </summary>
+			public void Freeze()
+			{
+				if (!_frozen)
+				{
+					var copy = new double[_values.Length];
+					Array.Copy(_values, copy, copy.Length);
+					_values = copy;
+					_frozen = true;
+				}
+			}
+
+			public override int GetHashCode()
+			{
+				return _hash;
+			}
+
+			public override bool Equals(object obj)
+			{
+				var other = obj as ToStringValueKey;
+				if (other == null || other._hash != _hash || other._values.Length != _values.Length ||
+				    !string.Equals(other._kind, _kind) || !string.Equals(other._format, _format) ||
+				    !other._culture.ContentEquals(_culture))
+				{
+					return false;
+				}
+
+				//Числа сравниваются побитово: у 0 и -0, как и у NaN с разными битами, строки могут различаться.
+				var values = _values;
+				var otherValues = other._values;
+				for (var i = 0; i < values.Length; i++)
+				{
+					if (BitConverter.DoubleToInt64Bits(values[i]) != BitConverter.DoubleToInt64Bits(otherValues[i]))
+					{
+						return false;
+					}
+				}
+
+				return true;
 			}
 		}
 
@@ -1319,44 +1577,26 @@ namespace Ruzil3D.Utility
 		/// <returns>Ключ кэша.</returns>
 		/// <remarks>Ключ строится по значениям, а не по объекту: прежде ключом служили изменяемые структуры и хэш-код
 		/// массива, и кэш возвращал устаревшие или чужие строки. В ключ входят текущая культура и символы её формата чисел,
-		/// от которых зависит вывод: культура, изменённая пользователем, может иметь то же имя, что и стандартная.</remarks>
-		internal static string GetToStringHashKey(string kind, string format, IEnumerable<double> values)
+		/// от которых зависит вывод: культура, изменённая пользователем, может иметь то же имя, что и стандартная.
+		/// Числа хранятся в ключе побитово, а не текстом: построение текстового ключа замедляло попадание в кэш в 7–23 раза
+		/// и занимало в несколько раз больше памяти. Массив копируется в ключ только при сохранении в кэше.</remarks>
+		internal static object GetToStringHashKey(string kind, string format, double[] values)
 		{
-			var culture = CultureInfo.CurrentCulture;
-			var numberFormat = culture.NumberFormat;
-			var key = new StringBuilder();
-			key.Append(kind).Append('|').Append(culture.Name).Append('|')
-				.Append(numberFormat.NumberDecimalSeparator).Append('|')
-				.Append(numberFormat.NumberGroupSeparator).Append('|')
-				.Append(numberFormat.NegativeSign).Append('|')
-				.Append(numberFormat.PositiveSign).Append('|')
-				.Append(numberFormat.NaNSymbol).Append('|')
-				.Append(numberFormat.PositiveInfinitySymbol).Append('|')
-				.Append(numberFormat.NegativeInfinitySymbol).Append('|')
-				.Append(format).Append('|');
-
-			foreach (var value in values)
-			{
-				key.Append(value.ToString("G17", CultureInfo.InvariantCulture)).Append(';');
-			}
-
-			return key.ToString();
+			return new ToStringValueKey(kind, format, GetCultureSignature(), values);
 		}
 
 		/// <summary>
-		/// Возвращает строковое представление объекта из общего кэша.
+		/// Возвращает ключ общего кэша строковых представлений для объекта, заданного набором чисел.
 		/// </summary>
-		/// <param name="key">Ключ кэша.</param>
-		/// <returns>Сохранённое строковое представление или <b>null</b>, если его нет в кэше.</returns>
-		/// <remarks>Метод потокобезопасен.</remarks>
-		/// <exception cref="ArgumentNullException">Значение параметра <paramref name="key"/> равно <b>null</b>.</exception>
-		public static string GetToStringHashValue(object key)
+		/// <param name="kind">Вид объекта.</param>
+		/// <param name="format">Формат вывода.</param>
+		/// <param name="values">Числа, однозначно задающие объект.</param>
+		/// <returns>Ключ кэша.</returns>
+		internal static object GetToStringHashKey(string kind, string format, IEnumerable<double> values)
 		{
-			lock (ToStringHash)
-			{
-				string value;
-				return ToStringHash.TryGetValue(key, out value) ? value : null;
-			}
+			return GetToStringHashKey(kind, format, values as double[] ?? values.ToArray());
 		}
+
+		#endregion
 	}
 }

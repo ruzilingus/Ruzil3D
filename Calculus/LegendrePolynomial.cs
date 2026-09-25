@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using Ruzil3D.Algebra;
 using Ruzil3D.Utility;
 using static Ruzil3D.Math;
@@ -18,56 +17,80 @@ namespace Ruzil3D.Calculus
 		/// <remarks>Задается конструктором.</remarks>
 		public readonly int Deg;
 
-		//Кэшы
-		private static readonly List<double[]> Roots = new List<double[]>();
-		private static readonly List<double[]> GaussianWeights = new List<double[]>();
-		private static readonly List<Polynomial> Derivatives = new List<Polynomial>();
-
-		//Прежде здесь кэшировались многочлены (1 - x²)·P′(x)² для вычисления весов. Теперь веса вычисляются по значению
-		//производной в корне (см. GaussianWeight), но список сохранён: тесты потокобезопасности очищают кэши по имени.
-		private static readonly List<Polynomial> GaussianDenominators = new List<Polynomial>();
-
-		//Все обращения к кэшам выполняются под этой блокировкой: прежде одновременное первое обращение
-		//из разных потоков (в том числе при инициализации правил Гаусса в Calculus) портило списки,
-		//и интегрирование оставалось сломанным до конца работы процесса.
-		private static readonly object CacheLock = new object();
-
 		/// <summary>
-		/// Получает производную от полинома Лежандра.
+		/// Корни и веса правила Гаусса для одной степени.
 		/// </summary>
-		private Polynomial Derivative
+		private sealed class GaussNodes
 		{
-			get
+			/// <summary>
+			/// Корни с индексами от 0 до Deg/2 - 1 (остальные симметричны им, а средний корень нечетной степени равен нулю).
+			/// </summary>
+			public readonly double[] Roots;
+
+			/// <summary>
+			/// Веса с индексами от 0 до (Deg + 1)/2 - 1 (остальные симметричны им).
+			/// </summary>
+			public readonly double[] Weights;
+
+			public GaussNodes(double[] roots, double[] weights)
 			{
-				lock (CacheLock)
-				{
-					if (Derivatives.Count <= Deg)
-					{
-						Derivatives.AddRange(new Polynomial[Deg - Derivatives.Count + 1]);
-					}
+				Roots = roots;
+				Weights = weights;
+			}
+		}
 
-					var result = Derivatives[Deg];
+		//Корни и веса вычисляются для степени целиком при первом обращении и публикуются одной записью ссылки на
+		//неизменяемый объект, поэтому чтение обходится без блокировок. Прежде корни и веса хранились в общих списках:
+		//одновременное первое обращение из разных потоков (в том числе при инициализации правил Гаусса в Calculus)
+		//портило их до конца работы процесса, а после исправления все обращения шли под общей блокировкой.
+		//Одновременные вычисления дают одни и те же значения. Индекс — степень (поддерживаются степени до 10).
+		private static readonly object[] NodesCache = new object[11];
 
-					if (result == null)
-					{
-						Derivatives[Deg] = result = GetDerivative();
-					}
-
-					return result;
-				}
+		private GaussNodes GetNodes()
+		{
+			var nodes = (GaussNodes) System.Threading.Thread.VolatileRead(ref NodesCache[Deg]);
+			if (nodes == null)
+			{
+				nodes = ComputeNodes();
+				System.Threading.Thread.VolatileWrite(ref NodesCache[Deg], nodes);
 			}
 
+			return nodes;
+		}
+
+		private GaussNodes ComputeNodes()
+		{
+			var derivative = GetDerivative();
+
+			var roots = new double[Deg/2];
+			for (var i = 0; i < roots.Length; i++)
+			{
+				roots[i] = ResolveRoot(i, derivative);
+			}
+
+			var weights = new double[(Deg + 1)/2];
+			for (var i = 0; i < weights.Length; i++)
+			{
+				//Вес w = 2/((1 - x²)·P′(x)²) вычисляется по значению производной в корне. Прежде вычислялось значение
+				//раскрытого многочлена (1 - x²)·P′(x)² с коэффициентами до 3,5e7, и из-за вычитания близких чисел
+				//относительная погрешность весов при n = 10 достигала 2e-11, а их сумма отличалась от 2 на 5,6e-12.
+				//Индекс, которому не соответствует элемент массива корней, — средний корень нечетной степени, он равен нулю.
+				var root = i < roots.Length ? roots[i] : 0;
+				var value = derivative.GetValue(root);
+				weights[i] = 2 / ((1 - root * root) * value * value);
+			}
+
+			return new GaussNodes(roots, weights);
 		}
 
 		/// <summary>
 		/// Находит корень полинома Лежандра по индексу.
 		/// </summary>
-		/// <param name="index"></param>
-		/// <returns></returns>
-		private double ResolveRoot(int index)
+		/// <param name="index">Индекс корня.</param>
+		/// <param name="derivative">Производная полинома.</param>
+		/// <returns>Корень полинома.</returns>
+		private double ResolveRoot(int index, Polynomial derivative)
 		{
-			var derivative = Derivative;
-
 			//Начальное приближение
 			var result = Cos(Pi * (4 * (Deg - index) - 1) / (4 * Deg + 2));
 			var value = GetValue(result);
@@ -120,27 +143,7 @@ namespace Ruzil3D.Calculus
 				return 0;
 			}
 
-			lock (CacheLock)
-			{
-				if (Roots.Count <= Deg)
-				{
-					Roots.AddRange(new double[Deg - Roots.Count + 1][]);
-				}
-
-				if (Roots[Deg] == null)
-				{
-					Roots[Deg] = new double[Deg / 2];
-				}
-
-				var result = Roots[Deg][index];
-
-				if (result.Equals(0D))
-				{
-					Roots[Deg][index] = result = ResolveRoot(index);
-				}
-
-				return result;
-			}
+			return GetNodes().Roots[index];
 		}
 
 		/// <summary>
@@ -160,32 +163,7 @@ namespace Ruzil3D.Calculus
 				return GaussianWeight(Deg - index - 1);
 			}
 
-			lock (CacheLock)
-			{
-				if (GaussianWeights.Count <= Deg)
-				{
-					GaussianWeights.AddRange(new double[Deg - GaussianWeights.Count + 1][]);
-				}
-
-				if (GaussianWeights[Deg] == null)
-				{
-					GaussianWeights[Deg] = new double[(Deg + 1) / 2];
-				}
-
-				var result = GaussianWeights[Deg][index];
-
-				if (result.Equals(0))
-				{
-					//Вес w = 2/((1 - x²)·P′(x)²) вычисляется по значению производной в корне. Прежде вычислялось значение
-					//раскрытого многочлена (1 - x²)·P′(x)² с коэффициентами до 3,5e7, и из-за вычитания близких чисел
-					//относительная погрешность весов при n = 10 достигала 2e-11, а их сумма отличалась от 2 на 5,6e-12.
-					var root = Root(index);
-					var derivative = Derivative.GetValue(root);
-					GaussianWeights[Deg][index] = result = 2 / ((1 - root * root) * derivative * derivative);
-				}
-
-				return result;
-			}
+			return GetNodes().Weights[index];
 		}
 
 		/// <summary>

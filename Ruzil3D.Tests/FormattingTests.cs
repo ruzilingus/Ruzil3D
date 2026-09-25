@@ -610,23 +610,36 @@ namespace Ruzil3D.Tests
 				CStatic.DoubleToString(numbers[i]);
 			}
 
-			var best = TimeSpan.MaxValue;
-			for (var run = 0; run < 2; run++)
+			//Под нагрузкой (например, на перегруженном сервере сборки) время по часам может превысить границу, хотя сам
+			//процесс работает столько же, поэтому проверяется и процессорное время процесса (тесты этой коллекции
+			//выполняются отдельно от остальных). Прежний перебор констант занимал секунды и по часам, и процессорного времени.
+			var bestTime = TimeSpan.MaxValue;
+			var bestProcessorTime = TimeSpan.MaxValue;
+			using (var process = Process.GetCurrentProcess())
 			{
-				var stopwatch = Stopwatch.StartNew();
-				foreach (var number in numbers)
+				for (var run = 0; run < 3; run++)
 				{
-					CStatic.DoubleToString(number);
-				}
+					process.Refresh();
+					var processorTime = process.TotalProcessorTime;
+					var stopwatch = Stopwatch.StartNew();
 
-				stopwatch.Stop();
-				if (stopwatch.Elapsed < best)
-				{
-					best = stopwatch.Elapsed;
+					foreach (var number in numbers)
+					{
+						CStatic.DoubleToString(number);
+					}
+
+					stopwatch.Stop();
+					process.Refresh();
+					processorTime = process.TotalProcessorTime - processorTime;
+
+					bestTime = stopwatch.Elapsed < bestTime ? stopwatch.Elapsed : bestTime;
+					bestProcessorTime = processorTime < bestProcessorTime ? processorTime : bestProcessorTime;
 				}
 			}
 
-			Assert.True(best < TimeSpan.FromSeconds(1), "Форматирование " + numbers.Length + " чисел заняло " + best.TotalMilliseconds + " мс.");
+			Assert.True(bestTime < TimeSpan.FromSeconds(1) || bestProcessorTime < TimeSpan.FromSeconds(1),
+				"Форматирование " + numbers.Length + " чисел заняло " + bestTime.TotalMilliseconds + " мс (процессорного времени — " +
+				bestProcessorTime.TotalMilliseconds + " мс).");
 		}
 	}
 }

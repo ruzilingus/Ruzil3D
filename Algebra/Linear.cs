@@ -238,22 +238,26 @@ namespace Ruzil3D.Algebra
 		public override string ToString()
 		{
 			//Ключ кэша строится по значениям: структура делит изменяемый массив A с копиями,
-			//поэтому прежний ключ (сама структура) менялся вместе с ним.
-			var a = Coefficients;
-			var key = CStatic.GetToStringHashKey(nameof(Linear), null, a.Concat(new[] {Y}));
+			//поэтому прежний ключ (сама структура) менялся вместе с ним. Ключ и строка строятся по одной копии
+			//коэффициентов: массив, измененный другим потоком между ними, сохранил бы в кэше строку для других значений.
+			var coefficients = Coefficients;
+			var values = new double[coefficients.Length + 1];
+			Array.Copy(coefficients, values, coefficients.Length);
+			values[coefficients.Length] = Y;
+			var key = CStatic.GetToStringHashKey(nameof(Linear), null, values);
 
 			var result = CStatic.GetToStringHashValue(key);
 			if (result != null) return result;
 			result = "";
 
 
-			for (var i = 0; i < a.Length; i++)
+			for (var i = 0; i < coefficients.Length; i++)
 			{
 				var sym = "x" + CStatic.GetIndex(i + 1);
-				CStatic.AddLinearItem(ref result, a[i], sym);
+				CStatic.AddLinearItem(ref result, values[i], sym);
 			}
 			result = result == "" ? "0" : result;
-			result += " = " + CStatic.DoubleToString(Y);
+			result += " = " + CStatic.DoubleToString(values[coefficients.Length]);
 
 
 			CStatic.AddToStringHashValue(key, result);
