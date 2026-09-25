@@ -721,6 +721,7 @@ namespace Ruzil3D.Algebra
 
 			var starts = new int[order];
 			var lengths = new int[order];
+			var offsets = new int[order];
 			var count = 0;
 
 			var lastIdx = order - 1;
@@ -750,18 +751,23 @@ namespace Ruzil3D.Algebra
 					continue;
 				}
 
-				//Вставка с сортировкой: раньше начало периода, затем короче период.
+				//Вставка с сортировкой: сначала периоды, целиком повторившиеся хотя бы дважды, затем подтверждённые
+				//только MinPeriodMatch цифрами; среди равных — раньше начало периода, затем короче период. Без первого
+				//условия длинный частично подтверждённый «период», начавшийся раньше, побеждал настоящий:
+				//(Fraction)0.999999 давало 99999899999/99999999999 вместо 999999·10⁻⁶.
 				var start = i - offset + 1;
 				var k = count++;
-				while (k > 0 && (starts[k - 1] > start || (starts[k - 1] == start && lengths[k - 1] > length)))
+				while (k > 0 && IsAfter(offsets[k - 1] < lengths[k - 1], starts[k - 1], lengths[k - 1], offset < length, start, length))
 				{
 					starts[k] = starts[k - 1];
 					lengths[k] = lengths[k - 1];
+					offsets[k] = offsets[k - 1];
 					k--;
 				}
 
 				starts[k] = start;
 				lengths[k] = length;
+				offsets[k] = offset;
 			}
 
 			for (var k = 0; k < count; k++)
@@ -770,7 +776,9 @@ namespace Ruzil3D.Algebra
 
 				//Продолжение периода добавляет к digits хвост L/W, где L — последние length цифр, W = 10^length - 1.
 				//Период принимается, только если он не дальше от числа, чем округление до order цифр:
-				//|L/W - rest/scale| ≤ min(rest/scale, 1 - rest/scale).
+				//|L/W - rest/scale| ≤ min(rest/scale, 1 - rest/scale). Период, повторившийся целиком не меньше
+				//StrongPeriodRepeats раз после первого вхождения, принимается и без этой проверки (как и прежде): значение,
+				//отличающееся на несколько ulp от 9999999 или 9999.999, по-прежнему превращается в это число.
 				var tail = digits%Pow10[length];
 				var w = Pow10[length] - 1UL;
 
@@ -794,7 +802,8 @@ namespace Ruzil3D.Algebra
 					difference.Subtract(tailScale);
 				}
 
-				if (Big.Compare(difference, restW) > 0 || Big.Compare(difference, complementW) > 0)
+				if (offsets[k] < StrongPeriodRepeats*length &&
+					(Big.Compare(difference, restW) > 0 || Big.Compare(difference, complementW) > 0))
 				{
 					continue;
 				}
@@ -808,6 +817,20 @@ namespace Ruzil3D.Algebra
 			}
 
 			return NaN;
+		}
+
+		/// <summary>
+		/// Возвращает значение, показывающее, должен ли кандидат в периоды (<paramref name="partial1"/>, <paramref name="start1"/>,
+		/// <paramref name="length1"/>) проверяться после кандидата (<paramref name="partial2"/>, <paramref name="start2"/>, <paramref name="length2"/>).
+		/// </summary>
+		private static bool IsAfter(bool partial1, int start1, int length1, bool partial2, int start2, int length2)
+		{
+			if (partial1 != partial2)
+			{
+				return partial1;
+			}
+
+			return start1 > start2 || (start1 == start2 && length1 > length2);
 		}
 
 		#endregion
@@ -1430,6 +1453,11 @@ namespace Ruzil3D.Algebra
 		/// (например, у 99999/7 = 14285.(571428) после целой части видно меньше двух периодов).
 		/// </summary>
 		private const int MinPeriodMatch = 4;
+
+		/// <summary>
+		/// Число целых повторений периода, после которого он принимается без проверки близости к исходному числу.
+		/// </summary>
+		private const int StrongPeriodRepeats = 4;
 
 		/// <summary>
 		/// Модуль long.MinValue.

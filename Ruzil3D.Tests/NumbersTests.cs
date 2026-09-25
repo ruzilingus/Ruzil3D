@@ -203,6 +203,28 @@ namespace Ruzil3D.Tests
 		}
 
 		[Fact]
+		public void Fraction_FromDouble_ShortDecimalsStayExact()
+		{
+			// Промежуточная версия превращала такие числа в длинные «периодические» дроби: частично подтверждённый период,
+			// начавшийся раньше, побеждал настоящий период 9. Например, (Fraction)0.999999 давало 99999899999/99999999999.
+			foreach (var text in new[] {"0.999999", "99.9999", "9999.999", "99999.9", "100000.1", "70000.1", "2999.997", "0.4000001"})
+			{
+				var fraction = (Fraction) double.Parse(text, CultureInfo.InvariantCulture);
+				var expected = new Fraction(long.Parse(text.Replace(".", "")), 1, text.IndexOf('.') - text.Length + 1, true);
+				Assert.True(fraction == expected, text + ": " + fraction);
+			}
+
+			Assert.True((Fraction) 0.999999 + (Fraction) 0.000001 == new Fraction(1));
+			Assert.True((Fraction) (698.17*13.607) == new Fraction(949999919, 1, -5, true));
+
+			// Как и прежде, значение, отличающееся на несколько ulp от 9999999 или 9999.999, превращается в это число.
+			var nearInteger = BitConverter.Int64BitsToDouble(BitConverter.DoubleToInt64Bits(9999999D) - 3);
+			Assert.True((Fraction) nearInteger == new Fraction(9999999));
+			var nearDecimal = BitConverter.Int64BitsToDouble(BitConverter.DoubleToInt64Bits(9999.999) + 3);
+			Assert.True((Fraction) nearDecimal == new Fraction(9999999, 1, -3, true));
+		}
+
+		[Fact]
 		public void Fraction_Parse_FindsOnlyGenuinePeriods()
 		{
 			// Прежде условие выбора периода было всегда истинным, и побеждал «период», подтверждённый одной цифрой:
@@ -284,10 +306,12 @@ namespace Ruzil3D.Tests
 			Assert.Equal("9007199254740993/2 ≈ 4503599627370496", TestUtil.WithCulture("", () => new Fraction(TwoPow53 + 1, 2).ToString()));
 			Assert.StartsWith("922337203685477581/7·10¹ ≈ 1.3176", TestUtil.WithCulture("", () => new Fraction(922337203685477581L, 7, 1).ToString()));
 
-			// Примеры из документации.
-			Assert.Equal("-3/7·10⁻⁶ ≈ -4.2857142857142857E-07", TestUtil.WithCulture("", () => new Fraction(3, -7, -6).ToString()));
-			Assert.Equal("1/3 ≈ 0.3333333333333333", TestUtil.WithCulture("", () => ((Fraction) 6/18).ToString()));
-			Assert.Equal("16/9·10³ ≈ 1777.7777777777778", TestUtil.WithCulture("", () => ((Fraction) 1777.7777777777777).ToString()));
+			// Примеры из документации. Значение после « ≈ » печатается в формате "R", который зависит от среды выполнения:
+			// .NET Core 3.0+ выводит кратчайшую запись (0.3333333333333333), .NET Framework и Mono — 17 цифр (0.33333333333333331).
+			Func<double, string> r = value => value.ToString("R", CultureInfo.InvariantCulture);
+			Assert.Equal("-3/7·10⁻⁶ ≈ " + r((double) new Fraction(3, -7, -6)), TestUtil.WithCulture("", () => new Fraction(3, -7, -6).ToString()));
+			Assert.Equal("1/3 ≈ " + r((double) new Fraction(1, 3)), TestUtil.WithCulture("", () => ((Fraction) 6/18).ToString()));
+			Assert.Equal("16/9·10³ ≈ " + r((double) new Fraction(16, 9, 3)), TestUtil.WithCulture("", () => ((Fraction) 1777.7777777777777).ToString()));
 			Assert.Equal("1/8 = 0.125", TestUtil.WithCulture("", () => new Fraction(1, 8).ToString()));
 		}
 
