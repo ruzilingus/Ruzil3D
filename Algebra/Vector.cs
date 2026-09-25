@@ -451,52 +451,12 @@ namespace Ruzil3D.Algebra
 		/// <returns>
 		/// 32-разрядное целое число со знаком, являющееся хэш-кодом для данного экземпляра.
 		/// </returns>
-		/// <remarks>Хэш-код согласован с оператором <see cref="operator ==(Vector, Vector)"/>: нулевые элементы в конце не учитываются.</remarks>
+		/// <remarks>Хэш-код, как и прежде, постоянный: вектор изменяем (элементы можно менять и через копию, делящую тот же массив), и хэш-код,
+		/// зависящий от значений, делал бы недоступным ключ, изменённый после добавления в <see cref="System.Collections.Generic.HashSet{T}"/> или словарь.</remarks>
 		public override int GetHashCode()
 		{
-			//Прежде хэш-код всегда был равен 0, и хэш-таблицы с векторами работали за квадратичное время.
-			//Нули в конце пропускаются, так как векторы (1, 2) и (1, 2, 0) равны.
-			var a = Coefficients;
-			var length = a.Length;
-			while (length > 0 && a[length - 1] == 0)
-			{
-				length--;
-			}
-
-			unchecked
-			{
-				//Ненулевое начальное значение: иначе нули в начале не влияли бы на хэш-код, и (0, 0, 1), (0, 1) и (1) совпадали бы.
-				var hashCode = 1;
-				for (var i = 0; i < length; i++)
-				{
-					hashCode = (hashCode*397) ^ GetValueHashCode(a[i]);
-				}
-
-				return hashCode;
-			}
-		}
-
-		/// <summary>
-		/// Возвращает хэш-код числа, согласованный с <see cref="double.Equals(double)"/>.
-		/// </summary>
-		/// <param name="value">Число.</param>
-		/// <returns>Хэш-код числа: одинаковый для +0 и −0, а также для всех значений NaN.</returns>
-		internal static int GetValueHashCode(double value)
-		{
-			//+0 и −0 равны, все NaN тоже равны между собой, но их двоичные представления различаются,
-			//а double.GetHashCode в .NET Framework не приводит NaN к одному значению.
-			if (value == 0)
-			{
-				return 0;
-			}
-
-			if (double.IsNaN(value))
-			{
-				return int.MinValue;
-			}
-
-			var bits = BitConverter.DoubleToInt64Bits(value);
-			return unchecked((int) bits ^ (int) (bits >> 32));
+			//Промежуточная версия вычисляла хэш-код по элементам, и HashSet переставал находить вектор, изменённый после добавления.
+			return 0;
 		}
 
 		#endregion

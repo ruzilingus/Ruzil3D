@@ -768,7 +768,7 @@ namespace Ruzil3D.Tests
 		[Fact]
 		public void Vector_HashCode_ConsistentWithEquality()
 		{
-			// Прежде хэш-код всегда был равен 0.
+			// Хэш-код согласован с равенством (он, как и прежде, постоянный: тип изменяем).
 			var otherNaN = BitConverter.Int64BitsToDouble(0x7FF8000000000001);
 			var pairs = new[]
 			{
@@ -784,17 +784,21 @@ namespace Ruzil3D.Tests
 				Assert.Equal(pair[0].GetHashCode(), pair[1].GetHashCode());
 			}
 
-			Assert.Equal(3, new[] {new Vector(0, 0, 1), new Vector(0, 1), new Vector(1)}.Select(v => v.GetHashCode()).Distinct().Count());
-
 			var vectors = Enumerable.Range(0, 1000).Select(i => new Vector(i%10, i/10D, 1)).ToList();
-			Assert.True(vectors.Select(v => v.GetHashCode()).Distinct().Count() > 900);
 			Assert.Equal(1000, new HashSet<Vector>(vectors).Count);
+
+			// Хэш-код, как и прежде, постоянный: вектор, изменённый после добавления (в том числе через копию, делящую
+			// тот же массив), по-прежнему находится. Промежуточная версия вычисляла хэш-код по элементам, и он терялся.
+			var key = new Vector(1, 2);
+			var set = new HashSet<Vector> {key};
+			key[0] = 5;
+			Assert.Contains(key, set);
 		}
 
 		[Fact]
 		public void Matrix_HashCode_ConsistentWithEquality()
 		{
-			// Прежде хэш-код всегда был равен 0.
+			// Хэш-код согласован с равенством (он, как и прежде, постоянный: тип изменяем).
 			var a = Rows(new[] {1D, 2});
 			var b = Rows(new[] {1D, 2, 0}, new[] {0D, 0});
 
@@ -802,14 +806,16 @@ namespace Ruzil3D.Tests
 			Assert.Equal(a.GetHashCode(), b.GetHashCode());
 			Assert.Equal(Matrix.Empty.GetHashCode(), Rows(new[] {0D}, new double[0]).GetHashCode());
 
-			var matrices = Enumerable.Range(0, 200).Select(i => Rows(new[] {i%10, 1D}, new[] {i/10D})).ToList();
-			Assert.True(matrices.Select(m => m.GetHashCode()).Distinct().Count() > 180);
+			var key = Rows(new[] {1D, 2}, new[] {3D, 4});
+			var set = new HashSet<Matrix> {key};
+			key[0, 0] = 5;
+			Assert.Contains(key, set);
 		}
 
 		[Fact]
 		public void Linear_HashCode_ConsistentWithEquality()
 		{
-			// Прежде хэш-код всегда был равен 0.
+			// Хэш-код согласован с равенством (он, как и прежде, постоянный: тип изменяем).
 			var a = new Linear(new[] {1D, 2}, 3);
 			var b = new Linear(new[] {1D, 2}, 3);
 
@@ -821,8 +827,10 @@ namespace Ruzil3D.Tests
 			Assert.True(c == d);
 			Assert.Equal(c.GetHashCode(), d.GetHashCode());
 
-			var linears = Enumerable.Range(0, 200).Select(i => new Linear(new double[] {i%10, 1}, i/10D)).ToList();
-			Assert.True(linears.Select(l => l.GetHashCode()).Distinct().Count() > 180);
+			var key = new Linear(new[] {1D, 2}, 3);
+			var dictionary = new Dictionary<Linear, int> {{key, 1}};
+			key.A[0] = 7;
+			Assert.True(dictionary.ContainsKey(key));
 		}
 
 		[Fact]

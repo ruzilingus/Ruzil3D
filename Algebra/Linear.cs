@@ -214,21 +214,12 @@ namespace Ruzil3D.Algebra
 		/// 32-разрядное целое число со знаком, являющееся хэш-кодом для данного экземпляра.
 		/// </returns>
 		/// <filterpriority>2</filterpriority>
-		/// <remarks>Хэш-код согласован с <see cref="Equals(Linear)"/>: учитываются значение, число и значения коэффициентов.</remarks>
+		/// <remarks>Хэш-код, как и прежде, постоянный: коэффициенты уравнения изменяемы (массив <see cref="A"/> открыт), и хэш-код,
+		/// зависящий от значений, делал бы недоступным ключ, изменённый после добавления в <see cref="System.Collections.Generic.HashSet{T}"/> или словарь.</remarks>
 		public override int GetHashCode()
 		{
-			//Прежде хэш-код всегда был равен 0, и хэш-таблицы с уравнениями работали за квадратичное время.
-			var a = Coefficients;
-			unchecked
-			{
-				var hashCode = (Vector.GetValueHashCode(Y)*397) ^ a.Length;
-				for (var i = 0; i < a.Length; i++)
-				{
-					hashCode = (hashCode*397) ^ Vector.GetValueHashCode(a[i]);
-				}
-
-				return hashCode;
-			}
+			//Промежуточная версия вычисляла хэш-код по коэффициентам, и HashSet переставал находить уравнение, изменённое после добавления.
+			return 0;
 		}
 
 		#endregion
