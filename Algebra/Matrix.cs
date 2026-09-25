@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Ruzil3D.Calculus;
 using Ruzil3D.Utility;
 
@@ -42,9 +43,23 @@ namespace Ruzil3D.Algebra
 		/// <exception cref="IndexOutOfRangeException">При записи индекс находится за пределами матрицы.</exception>
 		public Vector this[int index]
 		{
+			[MethodImpl(Math.AggressiveInlining)]
 			get
 			{
-				var lines = Lines;
+				//Поле читается напрямую, без свойства Lines: обращение к статическому полю NoLines мешало встраиванию
+				//индексатора, и циклы по элементам стали вдвое медленнее исходной версии.
+				var lines = _lines;
+				if (lines == null)
+				{
+					//default(Matrix) ведет себя как Empty.
+					if (index < 0)
+					{
+						throw new IndexOutOfRangeException();
+					}
+
+					return Vector.Empty;
+				}
+
 				return lines.Length > index ? lines[index] : Vector.Empty;
 			}
 			set
@@ -71,6 +86,7 @@ namespace Ruzil3D.Algebra
 		/// <returns>Элемент матрицы соответствующий мультииндексу строка-столбец.</returns>
 		public double this[int i, int j]
 		{
+			[MethodImpl(Math.AggressiveInlining)]
 			get
 			{
 				var line = this[i];
@@ -86,7 +102,15 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Получает количесво строк матрицы.
 		/// </summary>
-		public int Length => Lines.Length;
+		public int Length
+		{
+			[MethodImpl(Math.AggressiveInlining)]
+			get
+			{
+				var lines = _lines;
+				return lines == null ? 0 : lines.Length;
+			}
+		}
 
 		/// <summary>
 		/// Возвращает значение, показывающее, является ли данная матрица нулевой.
@@ -287,11 +311,12 @@ namespace Ruzil3D.Algebra
 		public static Vector operator *(Matrix x, Vector y)
 		{
 			//Длина результата равна числу строк матрицы (прежде бралась длина вектора).
-			var result = new double[x.Length];
+			var lines = x.Lines;
+			var result = new double[lines.Length];
 
-			for (var i = 0; i < x.Length; i++)
+			for (var i = 0; i < lines.Length; i++)
 			{
-				result[i] = x[i].DotProduct(y);
+				result[i] = Vector.DotProduct(lines[i], y);
 			}
 
 			return new Vector(result);
@@ -353,33 +378,39 @@ namespace Ruzil3D.Algebra
 		/// <returns>Произведение двух матриц.</returns>
 		public static Matrix operator *(Matrix x, Matrix y)
 		{
-			var result = new List<Vector>();
+			//Массивы строк читаются один раз, а не через индексаторы для каждого элемента. Отсутствующие элементы
+			//коротких строк, как и прежде, равны нулю и тоже умножаются, порядок сложения прежний.
+			var xLines = x.Lines;
+			var yLines = y.Lines;
+			var yRows = new double[yLines.Length][];
 
 			var jyMax = 0;
-			for (var i = 0; i < y.Length; i++)
+			for (var i = 0; i < yLines.Length; i++)
 			{
-				jyMax = Math.Max(jyMax, y[i].Length);
+				yRows[i] = yLines[i].Coefficients;
+				jyMax = Math.Max(jyMax, yRows[i].Length);
 			}
 
-			for (var ix = 0; ix < x.Length; ix++)
+			var result = new Vector[xLines.Length];
+			for (var ix = 0; ix < xLines.Length; ix++)
 			{
-				var line = new Vector(new double[jyMax]);
+				var xRow = xLines[ix].Coefficients;
+				var line = new double[jyMax];
 				for (var jy = 0; jy < jyMax; jy++)
 				{
 					//Скалярное произведение строки x[i] со столбцом y[j]
 					double sum = 0;
-					for (var iy = 0; iy < y.Length; iy++)
+					for (var iy = 0; iy < yRows.Length; iy++)
 					{
-						sum += x[ix, iy]*y[iy, jy];
-						//sum += 1000000000000 * x[ix, iy] * y[iy, jy];
+						var yRow = yRows[iy];
+						sum += (iy < xRow.Length ? xRow[iy] : 0)*(jy < yRow.Length ? yRow[jy] : 0);
 					}
 					line[jy] = sum;
-					//line[jy] = sum / 1000000000000;
 				}
-				result.Add(line);
+				result[ix] = new Vector(line);
 			}
 
-			return new Matrix(result.ToArray());
+			return new Matrix(result);
 		}
 
 		/// <summary>

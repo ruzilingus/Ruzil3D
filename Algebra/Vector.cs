@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using static Ruzil3D.Utility.CStatic;
 
 namespace Ruzil3D.Algebra
@@ -23,7 +24,7 @@ namespace Ruzil3D.Algebra
 		/// </summary>
 		/// <remarks>У структуры, созданной по умолчанию (<c>default(Vector)</c>, элемент нового массива), массива нет:
 		/// прежде любое обращение к ней выбрасывало <see cref="NullReferenceException"/>, теперь она равна <see cref="Empty"/>.</remarks>
-		private double[] Coefficients => _a ?? NoCoefficients;
+		internal double[] Coefficients => _a ?? NoCoefficients;
 
 		/// <summary>
 		/// Представляет нулевой вектор.
@@ -55,10 +56,24 @@ namespace Ruzil3D.Algebra
 		/// <exception cref="IndexOutOfRangeException">При записи индекс находится за пределами вектора.</exception>
 		public double this[int index]
 		{
+			[MethodImpl(Math.AggressiveInlining)]
 			get
 			{
-				var a = Coefficients;
-				return a.Length > index ? a[index] : 0;
+				//Поле читается напрямую, без свойства Coefficients: обращение к статическому полю NoCoefficients мешало
+				//встраиванию индексатора, и циклы по элементам стали в 2–4 раза медленнее исходной версии.
+				var a = _a;
+				if (a != null && (uint) index < (uint) a.Length)
+				{
+					return a[index];
+				}
+
+				//Отрицательный индекс, как и прежде, недопустим (и для default(Vector), который ведет себя как Empty).
+				if (index < 0)
+				{
+					throw new IndexOutOfRangeException();
+				}
+
+				return 0;
 			}
 			set
 			{
@@ -79,7 +94,15 @@ namespace Ruzil3D.Algebra
 		/// <summary>
 		/// Возвращает количество элементов вектора.
 		/// </summary>
-		public int Length => Coefficients.Length;
+		public int Length
+		{
+			[MethodImpl(Math.AggressiveInlining)]
+			get
+			{
+				var a = _a;
+				return a == null ? 0 : a.Length;
+			}
+		}
 
 		/// <summary>
 		/// Возвращает значение, показывающее, является ли данный вектор нулевым.
@@ -312,16 +335,19 @@ namespace Ruzil3D.Algebra
 		/// <returns>Сумма <paramref name="x"/> и <paramref name="y"/>.</returns>
 		public static Vector operator +(Vector x, Vector y)
 		{
+			var xCoefficients = x.Coefficients;
+			var yCoefficients = y.Coefficients;
+
 			double[] xArray, yArray;
-			if (x.Length < y.Length)
+			if (xCoefficients.Length < yCoefficients.Length)
 			{
-				xArray = x.Coefficients;
-				yArray = y.Coefficients;
+				xArray = xCoefficients;
+				yArray = yCoefficients;
 			}
 			else
 			{
-				xArray = y.Coefficients;
-				yArray = x.Coefficients;
+				xArray = yCoefficients;
+				yArray = xCoefficients;
 			}
 
 			var result = new double[yArray.Length];
@@ -347,6 +373,7 @@ namespace Ruzil3D.Algebra
 		/// <returns>Разность <paramref name="x"/> и <paramref name="y"/>.</returns>
 		public static Vector operator -(Vector x, Vector y)
 		{
+			//Именно x + (-y): при записи x[i] + -y[i] в одном цикле JIT заменяет ее вычитанием, и у NaN меняется знак.
 			return x + -y;
 		}
 
@@ -364,10 +391,13 @@ namespace Ruzil3D.Algebra
 		{
 			double result = 0;
 
-			var len = Math.Min(x.Length, y.Length);
+			//Массивы читаются один раз, а не через индексатор для каждого элемента; порядок сложения прежний.
+			var xArray = x.Coefficients;
+			var yArray = y.Coefficients;
+			var len = Math.Min(xArray.Length, yArray.Length);
 			for (var i = 0; i < len; i++)
 			{
-				result += x[i]*y[i];
+				result += xArray[i]*yArray[i];
 				//result += 1000000000000*x[i] * y[i];
 			}
 

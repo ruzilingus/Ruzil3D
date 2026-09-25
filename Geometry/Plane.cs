@@ -13,7 +13,10 @@ namespace Ruzil3D.Geometry
 		/// Получает значение указывающее, что уравнение плоскости является каноническим: нормаль (<see cref="A"/>, <see cref="B"/>, <see cref="C"/>) имеет единичную длину (с точностью до погрешности округления), а <see cref="D"/> ≤ 0.
 		/// </summary>
 		/// <remarks>Значение вычисляется по текущим коэффициентам, поэтому учитывает и их изменение после вызова <see cref="Normalize"/>.</remarks>
-		public bool IsNormalized => Math.Abs(A*A + B*B + C*C - 1) <= NormalizedTolerance && D <= 0;
+		public bool IsNormalized => IsUnit(A*A + B*B + C*C, D);
+
+		//Признак нормального вида по квадрату длины нормали и коэффициенту D.
+		private static bool IsUnit(double norm2, double d) => Math.Abs(norm2 - 1) <= NormalizedTolerance && d <= 0;
 
 		/// <summary>
 		/// Получает или задает коэффициент <see cref="A"/> из общего уравнения плоскости.
@@ -348,13 +351,15 @@ namespace Ruzil3D.Geometry
 		public void Normalize()
 		{
 			//Признак нормального вида вычисляется по текущим коэффициентам: прежде сохраненный флаг устаревал после
-			//изменения полей A, B, C или D, и метод ничего не делал.
-			if (IsNormalized)
+			//изменения полей A, B, C или D, и метод ничего не делал. Сумма квадратов вычисляется один раз, а не трижды
+			//(в IsNormalized, в GetNorm и в Length): от этого вдвое замедлялся и конструктор по трем точкам.
+			var norm2 = A*A + B*B + C*C;
+			if (IsUnit(norm2, D))
 			{
 				return;
 			}
 
-			var norm = GetNorm();
+			var norm = Point3D.GetLength(norm2, A, B, C, 0);
 
 			if (D > 0)
 			{

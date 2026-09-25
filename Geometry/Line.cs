@@ -117,12 +117,14 @@ namespace Ruzil3D.Geometry
 		/// </summary>
 		public void Normalize()
 		{
-			if (IsNormalized)
+			//Сумма квадратов вычисляется один раз, а не трижды (в IsNormalized, в GetNorm и в Length).
+			var norm2 = A*A + B*B;
+			if (IsUnit(norm2, C))
 			{
 				return;
 			}
 
-			var norm = GetNorm();
+			var norm = Point3D.GetLength(norm2, A, B, 0, 0);
 
 			if (C > 0)
 			{
@@ -145,7 +147,10 @@ namespace Ruzil3D.Geometry
 		//Уравнение приведено к нормальному виду (с точностью до погрешности округления после Normalize).
 		//Признак вычисляется по текущим коэффициентам: поля A, B и C открыты для записи, и прежде сохраненный флаг
 		//устаревал — после изменения коэффициентов GetNorm возвращал 1, а Normalize ничего не делал.
-		private bool IsNormalized => Math.Abs(A*A + B*B - 1) <= NormalizedTolerance && C <= 0;
+		private bool IsNormalized => IsUnit(A*A + B*B, C);
+
+		//Признак нормального вида по квадрату длины нормали и коэффициенту C.
+		private static bool IsUnit(double norm2, double c) => Math.Abs(norm2 - 1) <= NormalizedTolerance && c <= 0;
 
 		private double GetNorm()
 		{
