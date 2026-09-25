@@ -91,7 +91,7 @@
 - `Matrix`: произведение на вектор, сумма и разность матриц с разным числом строк, `GetIdentity`.
 - `Polynomial`: деление при нулевых старших коэффициентах, производная порядка выше степени.
 - `CStatic.DoubleToStringSimple` для NaN, бесконечностей и малого числа значащих цифр, а также для чисел меньше ~1e-300 (раньше `Infinity·10⁻³⁰⁵`).
-- `CStatic.GetIndex(int.MinValue)` выбрасывал `OverflowException`. `CStatic.NumberInfo` разбирал строку в текущей культуре: "1.5" в культуре de-DE давало 15, а в ru-RU — `FormatException`.
+- `CStatic.GetIndex(int.MinValue)` выбрасывал `OverflowException`.
 - `Line`, `Plane`: `Theta`, `P` и `ToString` для коэффициентов NaN.
 
 Потокобезопасность:

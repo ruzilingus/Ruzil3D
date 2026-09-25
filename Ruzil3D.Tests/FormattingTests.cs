@@ -525,13 +525,13 @@ namespace Ruzil3D.Tests
 		}
 
 		[Theory]
-		[InlineData("en-US")]
-		[InlineData("de-DE")]
-		[InlineData("ru-RU")]
-		public void NumberInfo_ParsesStringsInvariantly(string culture)
+		[InlineData("en-US", "1.5")]
+		[InlineData("de-DE", "1,5")]
+		[InlineData("ru-RU", "1,5")]
+		public void NumberInfo_ParsesStringsInCurrentCulture(string culture, string text)
 		{
-			// Прежде строка разбиралась в текущей культуре: "1.5" давало 15 при de-DE и FormatException при ru-RU.
-			var value = TestUtil.WithCulture(culture, () => new CStatic.NumberInfo("1.5").DoubleValue);
+			// Строка разбирается в текущей культуре, как в Convert.ToDouble(object): в ru-RU "1,5" — это 1.5.
+			var value = TestUtil.WithCulture(culture, () => new CStatic.NumberInfo(text).DoubleValue);
 
 			Assert.Equal(1.5, value);
 		}

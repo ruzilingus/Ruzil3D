@@ -757,13 +757,12 @@ namespace Ruzil3D.Utility
 			/// <summary>
 			/// Инициализирует новый экземпляр класса.
 			/// </summary>
-			/// <param name="number"></param>
+			/// <param name="number">Число. Строка разбирается в текущей культуре, как в <see cref="Convert.ToDouble(object)"/>.</param>
 			public NumberInfo(object number)
 			{
 				Value = number;
-				//Строки разбираются в инвариантной культуре: прежде "1.5" давало 1.5 при en-US, 15 при de-DE
-				//и FormatException при ru-RU.
-				DoubleValue = Convert.ToDouble(number, CultureInfo.InvariantCulture);
+				//Строка разбирается в текущей культуре, как и прежде: в ru-RU "1,5" означает 1.5.
+				DoubleValue = Convert.ToDouble(number);
 			}
 
 			private bool _isEpsilonCalculated;
