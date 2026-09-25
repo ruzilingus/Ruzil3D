@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Ruzil3D.Approximation;
 using Ruzil3D.Algebra;
@@ -13,6 +14,9 @@ namespace Ruzil3D.Curves
 	/// (см. <see cref="Type"/>). Поэтому <see cref="GetParameter"/> не убывает с ростом дистанции при любой точности.</remarks>
 	public class ParametricCurveDistanceCompiler<T> where T : ParametricCurve
 	{
+		//Замены кривых учитываются в CurveReplacementCounter: по нему последовательности кривых (ParametricCurves) узнают,
+		//что сохранённые длины могли устареть, не проверяя все кривые при каждом обращении.
+
 		#region Types
 
 		/// <summary>
@@ -380,15 +384,6 @@ namespace Ruzil3D.Curves
 
 		#endregion
 
-		//Количество замен кривых во всех компиляторах с данным типом кривых. По нему последовательности кривых
-		//(ParametricCurves) узнают, что сохранённые длины могли устареть, не проверяя все кривые при каждом обращении.
-		private static int _curveReplacements;
-
-		/// <summary>
-		/// Получает количество замен кривой (свойство <see cref="Curve"/>) во всех компиляторах с данным типом кривых.
-		/// </summary>
-		internal static int CurveReplacements => Interlocked.CompareExchange(ref _curveReplacements, 0, 0);
-
 		private T _curve;
 
 		/// <summary>
@@ -412,7 +407,7 @@ namespace Ruzil3D.Curves
 					//Прежде последовательности кривых продолжали использовать длину прежней кривой.
 					if (replaced)
 					{
-						Interlocked.Increment(ref _curveReplacements);
+						CurveReplacementCounter.Increment();
 					}
 				}
 			}
@@ -479,27 +474,70 @@ namespace Ruzil3D.Curves
 
 		#region Approx
 
-		private void Reset()
+		/// <summary>
+		/// Результат компиляции вместе с параметрами, по которым он получен.
+		/// </summary>
+		private sealed class Compiled
 		{
-			_approx = null;
+			public readonly T Curve;
+			public readonly int Accuracy;
+			public readonly EApproximationType Type;
+			public readonly IMonotonicFunctionApproximation Approx;
+
+			//Границы области определения аппроксимации: сохраняются, чтобы не вызывать свойства интерфейса при каждом обращении.
+			public readonly double LArgument;
+			public readonly double RArgument;
+
+			public Compiled(T curve, int accuracy, EApproximationType type, IMonotonicFunctionApproximation approx)
+			{
+				Curve = curve;
+				Accuracy = accuracy;
+				Type = type;
+				Approx = approx;
+				LArgument = approx.LArgument;
+				RArgument = approx.RArgument;
+			}
 		}
 
-		private IMonotonicFunctionApproximation _approx;
-
-		private IMonotonicFunctionApproximation Approx
+		private void Reset()
 		{
-			get
+			_compiled = null;
+		}
+
+		//Неизменяемый объект публикуется одной записью ссылки.
+		private volatile Compiled _compiled;
+
+		/// <summary>
+		/// Возвращает результат компиляции для текущих кривой, точности и способа аппроксимации.
+		/// </summary>
+		[MethodImpl(Math.AggressiveInlining)]
+		private Compiled GetCompiled()
+		{
+			//Результат сравнивается с параметрами, по которым он получен: прежде кривая, замененная другим потоком во время
+			//компиляции, могла навсегда остаться с аппроксимацией прежней кривой, а GetValue мог применить параметр,
+			//найденный для прежней кривой, к новой. Результат, полученный по прежним параметрам, лишь приводит к повторной
+			//компиляции при следующем обращении.
+			var compiled = _compiled;
+
+			if (compiled != null && ReferenceEquals(compiled.Curve, _curve) && compiled.Accuracy == _accuracy &&
+			    compiled.Type == _type)
 			{
-				//Поле читается один раз, поэтому одновременный сброс из другого потока не приводит к null.
-				var approx = _approx;
-
-				if (approx == null)
-				{
-					_approx = approx = Compile();
-				}
-
-				return approx;
+				return compiled;
 			}
+
+			return Recompile();
+		}
+
+		private Compiled Recompile()
+		{
+			var curve = _curve;
+			var accuracy = _accuracy;
+			var type = _type;
+
+			var compiled = new Compiled(curve, accuracy, type, Compile(curve, accuracy, type));
+			_compiled = compiled;
+
+			return compiled;
 		}
 
 		#endregion
@@ -518,9 +556,8 @@ namespace Ruzil3D.Curves
 			Type = type;
 		}
 
-		private IMonotonicFunctionApproximation Compile()
+		private static IMonotonicFunctionApproximation Compile(T curve, int accuracy, EApproximationType type)
 		{
-			var curve = Curve;
 			var length = curve.Length;
 
 			if (double.IsNaN(length) || double.IsInfinity(length))
@@ -541,7 +578,7 @@ namespace Ruzil3D.Curves
 				return new CustomInterpolator(rectification, t => curve.GetDistance(0, t), length);
 			}
 
-			var count = curve.IsNatural ? 1 : 1 << Accuracy;
+			var count = curve.IsNatural ? 1 : 1 << accuracy;
 			var step = 1D/count;
 
 			//Расстояния до узлов — суммы длин участков между соседними узлами, поэтому они не убывают. Прежде расстояние
@@ -589,7 +626,7 @@ namespace Ruzil3D.Curves
 			Array.Resize(ref y, last + 1);
 
 			//Аппроксимация (интерполяция) t от расстояния
-			switch (Type)
+			switch (type)
 			{
 				case EApproximationType.HighSpeed:
 				case EApproximationType.Linear:
@@ -614,35 +651,55 @@ namespace Ruzil3D.Curves
 		/// считается равной ближайшему концу.</remarks>
 		public double GetParameter(double distance)
 		{
-			var approx = Approx;
+			return GetParameterCore(GetCompiled(), distance);
+		}
 
+		//Метод экземпляра и встраивается: вызов статического метода обобщенного класса требует поиска его типа при каждом вызове.
+		[MethodImpl(Math.AggressiveInlining)]
+		private double GetParameterCore(Compiled compiled, double distance)
+		{
+			if (!(distance >= compiled.LArgument && distance <= compiled.RArgument))
+			{
+				distance = ClampDistance(distance, compiled.LArgument, compiled.RArgument);
+			}
+
+			return compiled.Approx.GetValue(distance);
+		}
+
+		/// <summary>
+		/// Приводит к концу отрезка [<paramref name="left"/>, <paramref name="right"/>] дистанцию, выходящую за него на погрешность
+		/// округления; для большего выхода выбрасывает исключение. NaN возвращается без изменений.
+		/// </summary>
+		private static double ClampDistance(double distance, double left, double right)
+		{
 			//Прежде выход за пределы кривой приводил, в зависимости от типа кривой, к ArgumentException без имени
 			//параметра (из GetValue кривой) или к ArgumentOutOfRangeException для аргумента x (из интерполяции).
 			//Выход на погрешность округления допускается: для дуг окружности прежде возвращался конец кривой, а i·L/N при i = N
 			//бывает больше L (у дуги с L = 2.1·0.3 уже при N = 7).
-			var tolerance = 16*MachineEpsilon*Math.Max(Math.Abs(approx.LArgument), Math.Abs(approx.RArgument));
-			if (distance < approx.LArgument)
+			var tolerance = 16*MachineEpsilon*Math.Max(Math.Abs(left), Math.Abs(right));
+			if (distance < left)
 			{
-				if (!(distance >= approx.LArgument - tolerance))
+				if (!(distance >= left - tolerance))
 				{
 					throw new ArgumentOutOfRangeException(nameof(distance), distance,
-						"Дистанция должна быть от 0 до длины кривой (" + approx.RArgument + ").");
+						"Дистанция должна быть от 0 до длины кривой (" + right + ").");
 				}
 
-				distance = approx.LArgument;
+				return left;
 			}
-			else if (distance > approx.RArgument)
+
+			if (distance > right)
 			{
-				if (!(distance <= approx.RArgument + tolerance))
+				if (!(distance <= right + tolerance))
 				{
 					throw new ArgumentOutOfRangeException(nameof(distance), distance,
-						"Дистанция должна быть от 0 до длины кривой (" + approx.RArgument + ").");
+						"Дистанция должна быть от 0 до длины кривой (" + right + ").");
 				}
 
-				distance = approx.RArgument;
+				return right;
 			}
 
-			return approx.GetValue(distance);
+			return distance;
 		}
 
 		/// <summary>
@@ -658,8 +715,37 @@ namespace Ruzil3D.Curves
 		/// <exception cref="ArgumentOutOfRangeException">Дистанция меньше 0 или больше длины кривой больше чем на погрешность округления.</exception>
 		public Point3D GetValue(double distance)
 		{
-			return Curve.GetValue(GetParameter(distance));
+			//Кривая и аппроксимация берутся из одного результата компиляции.
+			var compiled = GetCompiled();
+			return compiled.Curve.GetValue(GetParameterCore(compiled, distance));
 		}
 
+	}
+
+	/// <summary>
+	/// Количество замен кривых (свойство <see cref="ParametricCurveDistanceCompiler{T}.Curve"/>) во всех компиляторах расстояний.
+	/// </summary>
+	/// <remarks>Класс не обобщённый: обращение к статическому полю обобщённого класса из общего кода требует поиска
+	/// типа при каждом обращении. Счётчик читается обычным чтением volatile-поля: прежнее чтение через
+	/// Interlocked.CompareExchange захватывало строку кэша, и обращения к длинам последовательностей из разных потоков
+	/// не масштабировались.</remarks>
+	internal static class CurveReplacementCounter
+	{
+		private static volatile int _value;
+
+		/// <summary>
+		/// Получает текущее значение счётчика.
+		/// </summary>
+		internal static int Value => _value;
+
+		/// <summary>
+		/// Увеличивает счётчик на единицу.
+		/// </summary>
+		internal static void Increment()
+		{
+#pragma warning disable 420 //Interlocked работает с volatile-полем правильно.
+			Interlocked.Increment(ref _value);
+#pragma warning restore 420
+		}
 	}
 }

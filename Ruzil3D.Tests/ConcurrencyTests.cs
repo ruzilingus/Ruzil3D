@@ -202,6 +202,69 @@ namespace Ruzil3D.Tests
 			Assert.Equal(0, wrong);
 		}
 
+		[Fact]
+		public void DistanceCompiler_CurveReplacedDuringUse()
+		{
+			// Кривая, замененная во время компиляции, могла навсегда остаться с аппроксимацией прежней кривой, а GetValue
+			// применял к новой кривой параметр, найденный для прежней. Теперь каждое обращение использует кривую и
+			// аппроксимацию из одного результата компиляции.
+			var c1 = new BezierCurve(new Point3D(0, 0, 0), new Point3D(1, 1, 0), new Point3D(2, 1, 0), new Point3D(3, 0, 0));
+			var c2 = new BezierCurve(new Point3D(0, 0, 0), new Point3D(1, 3, 0), new Point3D(4, 3, 0), new Point3D(6, 0, 0));
+			var expected1 = new ParametricCurveDistanceCompiler<BezierCurve>(c1);
+			var expected2 = new ParametricCurveDistanceCompiler<BezierCurve>(c2);
+			var distances = Enumerable.Range(0, 8).Select(i => System.Math.Min(c1.Length, c2.Length)*i/7).ToArray();
+
+			var wrong = 0;
+			var stale = 0;
+
+			for (var round = 0; round < 20; round++)
+			{
+				var compiler = new ParametricCurveDistanceCompiler<BezierCurve>(c1);
+				var stop = 0;
+				var reads = 0;
+
+				var errors = TestUtil.RunConcurrently(ThreadCount, thread =>
+				{
+					if (thread == 0)
+					{
+						//Кривая заменяется, пока другие потоки не выполнят достаточно обращений.
+						while (System.Threading.Interlocked.CompareExchange(ref reads, 0, 0) < 400)
+						{
+							compiler.Curve = c2;
+							compiler.Curve = c1;
+						}
+
+						compiler.Curve = c2;
+						System.Threading.Interlocked.Exchange(ref stop, 1);
+						return;
+					}
+
+					while (System.Threading.Interlocked.CompareExchange(ref stop, 0, 0) == 0)
+					{
+						foreach (var distance in distances)
+						{
+							var point = compiler.GetValue(distance);
+							if (point != expected1.GetValue(distance) && point != expected2.GetValue(distance))
+							{
+								System.Threading.Interlocked.Increment(ref wrong);
+							}
+						}
+
+						System.Threading.Interlocked.Increment(ref reads);
+					}
+				});
+
+				Assert.Empty(errors);
+				if (distances.Any(distance => compiler.GetValue(distance) != expected2.GetValue(distance)))
+				{
+					stale++;
+				}
+			}
+
+			Assert.Equal(0, wrong);
+			Assert.Equal(0, stale);
+		}
+
 		private static double[] Nodes(LegendrePolynomial polynomial)
 		{
 			var result = new List<double>();

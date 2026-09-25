@@ -27,7 +27,10 @@ namespace Ruzil3D.Curves
 			public readonly ParametricCurveDistanceCompiler<T>[] Compilers;
 			public readonly T[] Curves;
 			public readonly double[] Lengths;
-			public readonly int Replacements;
+
+			//Значение счётчика замен, при котором длины проверены. Обновляется после повторной проверки, чтобы не
+			//создавать новый объект; устаревшее значение лишь приводит к ещё одной проверке.
+			public volatile int Replacements;
 
 			public LengthsCache(ParametricCurveDistanceCompiler<T>[] compilers, T[] curves, double[] lengths, int replacements)
 			{
@@ -38,7 +41,8 @@ namespace Ruzil3D.Curves
 			}
 		}
 
-		private LengthsCache _lengthsCache;
+		//Объект публикуется одной записью ссылки (volatile — чтобы другой поток видел его заполненным).
+		private volatile LengthsCache _lengthsCache;
 
 		/// <summary>
 		/// Возвращает массив длин кривых.
@@ -51,7 +55,7 @@ namespace Ruzil3D.Curves
 				//Кривую компилятора можно заменить через его свойство Curve, поэтому сохранённые длины проверяются.
 				//Прежде они сохранялись навсегда: после замены кривой длина последовательности и расстояния оставались прежними.
 				//Счётчик замен читается до кривых, поэтому замена во время вычисления приведёт к повторной проверке.
-				var replacements = ParametricCurveDistanceCompiler<T>.CurveReplacements;
+				var replacements = CurveReplacementCounter.Value;
 				var compilers = Compilers;
 				var cache = _lengthsCache;
 
@@ -64,7 +68,7 @@ namespace Ruzil3D.Curves
 
 					if (IsActual(cache, compilers))
 					{
-						_lengthsCache = new LengthsCache(compilers, cache.Curves, cache.Lengths, replacements);
+						cache.Replacements = replacements;
 						return cache.Lengths;
 					}
 				}

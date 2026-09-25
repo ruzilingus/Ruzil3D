@@ -592,7 +592,7 @@ namespace Ruzil3D.Tests
 		public void DistanceCompiler_GetArgumentInvertsGetValue()
 		{
 			// Прежде обратная функция не была реализована ни в одной из внутренних аппроксимаций.
-			var field = typeof(ParametricCurveDistanceCompiler<BernsteinCurve>).GetField("_approx", BindingFlags.NonPublic | BindingFlags.Instance);
+			var field = typeof(ParametricCurveDistanceCompiler<BernsteinCurve>).GetField("_compiled", BindingFlags.NonPublic | BindingFlags.Instance);
 			var curves = new BernsteinCurve[] {Cusp(), new LineCurve(Point3D.Empty, new Point3D(3, 4, 0))};
 
 			foreach (var curve in curves)
@@ -601,7 +601,8 @@ namespace Ruzil3D.Tests
 				{
 					var compiler = new ParametricCurveDistanceCompiler<BernsteinCurve>(curve, 8, type);
 					compiler.GetParameter(0);
-					var approximation = (IMonotonicFunctionApproximation) field.GetValue(compiler);
+					var compiled = field.GetValue(compiler);
+					var approximation = (IMonotonicFunctionApproximation) compiled.GetType().GetField("Approx").GetValue(compiled);
 
 					Assert.Equal(0, approximation.LArgument);
 					Assert.Equal(curve.Length, approximation.RArgument);
