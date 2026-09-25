@@ -1298,13 +1298,34 @@ namespace Ruzil3D.Utility
 		}
 
 		/// <summary>
+		/// Ячейка общего кэша строковых представлений.
+		/// </summary>
+		/// <remarks>Запись хранится в volatile-поле: Thread.VolatileRead и Thread.VolatileWrite для элементов массива
+		/// приводят к аварийному завершению JIT-компилятора Mono 6.8.</remarks>
+		private sealed class ToStringCacheSlot
+		{
+			public volatile ToStringCacheEntry Entry;
+		}
+
+		/// <summary>
 		/// Общий кэш строковых представлений: 128 наборов по две записи (не больше 256 записей, как и прежде).
 		/// </summary>
 		/// <remarks>Кэш работает без блокировок: запись заменяется одной записью ссылки, а чтение не может увидеть её
 		/// частично записанной. Прежде все обращения шли под общей блокировкой, и под ней выполнялись GetHashCode и Equals
 		/// ключей, в том числе пользовательских: ключ, методы которого сами берут блокировку, мог привести к взаимной
 		/// блокировке потоков. Ещё раньше кэш был словарём без блокировок, который одновременные вызовы портили.</remarks>
-		private static readonly object[] ToStringCache = new object[256];
+		private static readonly ToStringCacheSlot[] ToStringCache = CreateToStringCache();
+
+		private static ToStringCacheSlot[] CreateToStringCache()
+		{
+			var slots = new ToStringCacheSlot[256];
+			for (var i = 0; i < slots.Length; i++)
+			{
+				slots[i] = new ToStringCacheSlot();
+			}
+
+			return slots;
+		}
 
 		//Порядковый номер записи: из двух записей набора заменяется более старая. Одновременные увеличения могут
 		//потеряться, это лишь немного меняет выбор заменяемой записи.
@@ -1333,8 +1354,8 @@ namespace Ruzil3D.Utility
 			var index = GetToStringCacheSet(hash);
 
 			//В наборе заменяется запись с тем же ключом, иначе пустая, иначе более старая.
-			var first = (ToStringCacheEntry) System.Threading.Thread.VolatileRead(ref ToStringCache[index]);
-			var second = (ToStringCacheEntry) System.Threading.Thread.VolatileRead(ref ToStringCache[index + 1]);
+			var first = ToStringCache[index].Entry;
+			var second = ToStringCache[index + 1].Entry;
 			if (!IsSameKey(first, key, hash) &&
 			    (IsSameKey(second, key, hash) || (first != null && (second == null || second.Stamp - first.Stamp < 0))))
 			{
@@ -1349,7 +1370,7 @@ namespace Ruzil3D.Utility
 			}
 
 			var stamp = ++_toStringCacheStamp;
-			System.Threading.Thread.VolatileWrite(ref ToStringCache[index], new ToStringCacheEntry(key, hash, value, stamp));
+			ToStringCache[index].Entry = new ToStringCacheEntry(key, hash, value, stamp);
 		}
 
 		/// <summary>
@@ -1369,13 +1390,13 @@ namespace Ruzil3D.Utility
 			var hash = key.GetHashCode();
 			var index = GetToStringCacheSet(hash);
 
-			var entry = (ToStringCacheEntry) System.Threading.Thread.VolatileRead(ref ToStringCache[index]);
+			var entry = ToStringCache[index].Entry;
 			if (IsSameKey(entry, key, hash))
 			{
 				return entry.Value;
 			}
 
-			entry = (ToStringCacheEntry) System.Threading.Thread.VolatileRead(ref ToStringCache[index + 1]);
+			entry = ToStringCache[index + 1].Entry;
 			return IsSameKey(entry, key, hash) ? entry.Value : null;
 		}
 

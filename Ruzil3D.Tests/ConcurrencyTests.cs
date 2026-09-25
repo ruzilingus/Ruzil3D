@@ -382,8 +382,10 @@ namespace Ruzil3D.Tests
 		private static void ResetLegendreCaches()
 		{
 			const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Static;
-			var cache = (object[]) typeof(LegendrePolynomial).GetField("NodesCache", flags).GetValue(null);
-			Array.Clear(cache, 0, cache.Length);
+			foreach (var slot in (Array) typeof(LegendrePolynomial).GetField("NodesCache", flags).GetValue(null))
+			{
+				slot.GetType().GetField("Nodes").SetValue(slot, null);
+			}
 		}
 	}
 }

@@ -39,20 +39,35 @@ namespace Ruzil3D.Calculus
 			}
 		}
 
+		/// <summary>
+		/// Ячейка кэша корней и весов одной степени.
+		/// </summary>
+		/// <remarks>Результат хранится в volatile-поле: Thread.VolatileRead и Thread.VolatileWrite для элементов массива
+		/// приводят к аварийному завершению JIT-компилятора Mono 6.8.</remarks>
+		private sealed class NodesSlot
+		{
+			public volatile GaussNodes Nodes;
+		}
+
 		//Корни и веса вычисляются для степени целиком при первом обращении и публикуются одной записью ссылки на
 		//неизменяемый объект, поэтому чтение обходится без блокировок. Прежде корни и веса хранились в общих списках:
 		//одновременное первое обращение из разных потоков (в том числе при инициализации правил Гаусса в Calculus)
 		//портило их до конца работы процесса, а после исправления все обращения шли под общей блокировкой.
 		//Одновременные вычисления дают одни и те же значения. Индекс — степень (поддерживаются степени до 10).
-		private static readonly object[] NodesCache = new object[11];
+		private static readonly NodesSlot[] NodesCache =
+		{
+			new NodesSlot(), new NodesSlot(), new NodesSlot(), new NodesSlot(), new NodesSlot(), new NodesSlot(),
+			new NodesSlot(), new NodesSlot(), new NodesSlot(), new NodesSlot(), new NodesSlot()
+		};
 
 		private GaussNodes GetNodes()
 		{
-			var nodes = (GaussNodes) System.Threading.Thread.VolatileRead(ref NodesCache[Deg]);
+			var slot = NodesCache[Deg];
+			var nodes = slot.Nodes;
 			if (nodes == null)
 			{
 				nodes = ComputeNodes();
-				System.Threading.Thread.VolatileWrite(ref NodesCache[Deg], nodes);
+				slot.Nodes = nodes;
 			}
 
 			return nodes;
