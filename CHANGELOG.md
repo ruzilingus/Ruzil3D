@@ -23,8 +23,7 @@
 
 - `Calculus.Integrate`: бесконечный предел или NaN — `ArgumentOutOfRangeException`, `null` — `ArgumentNullException`.
 - `Calculus.Differentiate`: недопустимые `eps`, порядок и сторона — `ArgumentOutOfRangeException`.
-- `Matrix.GetInverse`: численно вырожденная матрица — `DivideByZeroException`, как и точно вырожденная (раньше возвращались числа порядка 1e16).
-- `LinearSystem.Resolve`: вырожденная система — `ArithmeticException` вместо `Exception`, несогласованные размерности — `ArgumentException`.
+- `LinearSystem.Resolve`: вырожденная система — `ArithmeticException` (наследник прежнего `Exception`), несогласованные размерности — `ArgumentException` (раньше `IndexOutOfRangeException` или молча неполное решение).
 - Сетка из одного узла в `CGridApproximation`, `LinearInterpolation`, `CubicInterpolation` и пустой вход или одна точка в `InterpolationCompiler` — `ArgumentException` в конструкторе (раньше `GetValue` не завершался).
 - `ParametricCurves.GetValue` и `GetDetails` для пустой последовательности — `InvalidOperationException` (раньше бесконечный поиск).
 - `ParametricCurveDistanceCompiler`: точность вне 1…30 — `ArgumentOutOfRangeException` и в конструкторе; `GetParameter` и `GetValue` для расстояния вне [0, `Length`] — `ArgumentOutOfRangeException` с именем `distance`.
@@ -113,7 +112,7 @@
 - `Point3D.Cos` не выходит за пределы [−1, 1], поэтому `Angle` больше не возвращает NaN для параллельных векторов.
 - `Point3D.Length`, `Distance`, `PointD.Length`, `Distance`, `Quaternion.Abs` не переполняются для координат больше ~1e154 и не обращаются в ноль для меньших ~1e-154.
 - `Polynomial.GetBernstein` и `GetDerivative`: переполнение `int` в биномиальных коэффициентах и факториалах.
-- `Matrix.GetInverse`, `LinearSystem.Resolve`: выбор главного элемента по столбцу. Обращение матрицы 200×200 выделяет 1 МБ вместо 155 МБ. `LinearSystem.Resolve` не изменяет массив вызывающего кода.
+- `Matrix.GetInverse`, `LinearSystem.Resolve`: решение вычисляется методом Гаусса с выбором главного элемента по столбцу (раньше [[1e-20, 1], [1, 1]] решалась неверно). Вырожденность определяется прежним способом, поэтому исключение выбрасывается ровно в тех же случаях, что и раньше; для почти вырожденных матриц, как и раньше, возвращается результат. Обращение матрицы 200×200 занимает 10 мс и 1 МБ вместо 44 мс и 163 МБ, 4×4 — 0.6 мкс вместо 1.2 мкс. `LinearSystem.Resolve` не изменяет массив вызывающего кода.
 
 Геометрия:
 

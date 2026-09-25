@@ -9,11 +9,6 @@ namespace Ruzil3D.Calculus
 	public static class LinearSystem
 	{
 		/// <summary>
-		/// Машинный эпсилон: расстояние от 1 до следующего числа двойной точности.
-		/// </summary>
-		private const double MachineEpsilon = 2.220446049250313E-16;
-
-		/// <summary>
 		/// Решает систему линейных уравнений и возвращает результат.
 		/// </summary>
 		/// <param name="lines">Массив линейных уравнений заданных массивом структур <see cref="Linear"/>. Массив и уравнения не изменяются.</param>
@@ -21,12 +16,14 @@ namespace Ruzil3D.Calculus
 		/// <remarks>
 		/// Число неизвестных должно быть равно числу уравнений. Уравнение может содержать меньше коэффициентов, чем неизвестных:
 		/// недостающие коэффициенты считаются нулевыми. Коэффициенты при неизвестных с номерами больше n допускаются, только если они равны нулю.
-		/// Система решается методом Гаусса с выбором главного элемента по столбцу. Система считается вырожденной, если ведущий элемент
-		/// не превосходит оценки накопленной в нём погрешности округления (так бывает у матриц с числом обусловленности порядка 1/(n·ε) и больше).
+		/// Система решается методом Гаусса с выбором главного элемента по столбцу. Вырожденность определяется так же, как прежде:
+		/// исключение выбрасывается, если при исключении без перестановок в столбце не нашлось ненулевого ведущего элемента.
+		/// Для почти вырожденной системы исключение не выбрасывается: возвращается решение, точность которого определяется
+		/// числом обусловленности матрицы.
 		/// </remarks>
 		/// <exception cref="ArgumentNullException">Значение параметра <paramref name="lines"/> равно <b>null</b>.</exception>
 		/// <exception cref="ArgumentException">Число неизвестных не равно числу уравнений.</exception>
-		/// <exception cref="ArithmeticException">Система вырожденная, в том числе численно: решение не существует или не единственно.</exception>
+		/// <exception cref="ArithmeticException">Система вырожденная: решение не существует или не единственно.</exception>
 		public static double[] Resolve(Linear[] lines)
 		{
 			if (lines == null)
@@ -52,10 +49,6 @@ namespace Ruzil3D.Calculus
 					"Число уравнений (" + size + ") больше числа неизвестных (" + unknowns + ").", nameof(lines));
 			}
 
-			//Решение ищется на рабочих массивах: прежде метод записывал промежуточные уравнения в массив вызывающего кода,
-			//а каждое действие над строками создавало несколько новых массивов (для 300 уравнений — 320 МБ).
-			var a = new double[size][];
-			var y = new double[size][];
 			for (var i = 0; i < size; i++)
 			{
 				var coefficients = lines[i].A ?? new double[0];
@@ -68,14 +61,33 @@ namespace Ruzil3D.Calculus
 							" содержит ненулевой коэффициент при неизвестной x" + (j + 1) + ".", nameof(lines));
 					}
 				}
-
-				var row = new double[size];
-				Array.Copy(coefficients, row, coefficients.Length < size ? coefficients.Length : size);
-				a[i] = row;
-				y[i] = new[] {lines[i].Y};
 			}
 
-			if (!Solve(a, y))
+			//Решение ищется на рабочих массивах: прежде метод записывал промежуточные уравнения в массив вызывающего кода,
+			//а каждое действие над строками создавало несколько новых массивов (для 300 уравнений — 320 МБ).
+			var a = new double[size][];
+			var y = new double[size][];
+			for (var i = 0; i < size; i++)
+			{
+				a[i] = new double[size];
+				y[i] = new double[1];
+			}
+
+			Action<double[][], double[][]> fill = (matrix, values) =>
+			{
+				for (var i = 0; i < size; i++)
+				{
+					var coefficients = lines[i].A ?? new double[0];
+					var row = matrix[i];
+					Array.Clear(row, 0, size);
+					Array.Copy(coefficients, row, coefficients.Length < size ? coefficients.Length : size);
+					values[i][0] = lines[i].Y;
+				}
+			};
+
+			fill(a, y);
+
+			if (!Solve(a, y, fill))
 			{
 				//Прежде выбрасывалось исключение общего типа Exception.
 				throw new ArithmeticException("Задача вырожденная.");
@@ -91,37 +103,138 @@ namespace Ruzil3D.Calculus
 		}
 
 		/// <summary>
-		/// Решает систему A·X = B с несколькими правыми частями методом Гаусса с выбором главного элемента по столбцу.
+		/// Решает систему A·X = B с несколькими правыми частями.
 		/// </summary>
 		/// <param name="a">Квадратная матрица коэффициентов, заданная строками длины n. Содержимое изменяется.</param>
 		/// <param name="b">Правые части, заданные строками: по одной строке на уравнение. На выходе строка i содержит значения неизвестной xᵢ.</param>
-		/// <returns>Значение <b>false</b>, если матрица вырожденная, в том числе численно; в противном случае — значение <b>true</b>.</returns>
+		/// <param name="fill">Заполняет строки массивов <paramref name="a"/> и <paramref name="b"/> исходными значениями
+		/// (строка i — уравнение i). Вызывается, только если нужно повторить решение прежним методом.</param>
+		/// <returns>Значение <b>false</b>, если матрица вырожденная; в противном случае — значение <b>true</b>.</returns>
 		/// <remarks>
-		/// Прежде ведущим элементом брался первый ненулевой элемент столбца, а вырожденность проверялась точным сравнением с нулём.
-		/// Из-за этого для [[1e-20, 1], [1, 1]] получался неверный результат, а для численно вырожденной матрицы вместо исключения
-		/// возвращались числа порядка 1e16. Теперь ведущим берётся наибольший по модулю элемент столбца, а нулём он считается, если
-		/// не превосходит n·ε·S, где S — сумма модулей слагаемых, из которых он получен при исключении. Такая оценка погрешности
-		/// округления не зависит от масштаба строк и столбцов, поэтому, например, diag(1e-300, 1) по-прежнему обращается.
+		/// Решение вычисляется методом Гаусса с выбором главного элемента по столбцу. Прежде ведущим брался первый ненулевой элемент
+		/// столбца, из-за чего, например, для [[1e-20, 1], [1, 1]] получался неверный результат.
+		/// Вырожденность же определяется прежним методом — исключением без перестановок с той же арифметикой (см.
+		/// <see cref="EliminateWithoutPivoting"/>), поэтому исключение выбрасывается ровно в тех же случаях, что и прежде. Метод с выбором
+		/// главного элемента из-за другого порядка округлений не распознаёт, например, вырожденность целочисленной матрицы
+		/// [[1, 2, 3], [4, 5, 6], [7, 8, 9]] (ведущий элемент получается порядка 1e-16, а не нулём), а любой порог «численной
+		/// вырожденности» отвергал бы и плохо обусловленные системы с полезным решением, которые прежде решались.
 		/// </remarks>
-		internal static bool Solve(double[][] a, double[][] b)
+		internal static bool Solve(double[][] a, double[][] b, Action<double[][], double[][]> fill)
+		{
+			if (!EliminateWithoutPivoting(Copy(a), null))
+			{
+				return false;
+			}
+
+			if (SolveWithPivoting(a, b))
+			{
+				return true;
+			}
+
+			//Нулевой ведущий элемент встретился только при выборе главного элемента (так бывает лишь у матриц, вырожденных
+			//с точностью до округления). Как и прежде, возвращается решение метода без перестановок.
+			fill(a, b);
+			EliminateWithoutPivoting(a, b);
+			for (var i = a.Length - 1; i > 0; i--)
+			{
+				var solution = b[i];
+				for (var j = i - 1; j >= 0; j--)
+				{
+					var factor = a[j][i];
+					var lineB = b[j];
+					for (var t = 0; t < lineB.Length; t++)
+					{
+						lineB[t] -= factor*solution[t];
+					}
+				}
+			}
+
+			return true;
+		}
+
+		/// <summary>
+		/// Приводит матрицу к верхней треугольной с единичной диагональю прежним методом: ведущим берётся первый ненулевой элемент
+		/// столбца, строка умножается на обратное к нему число, а затем вычитается из следующих строк.
+		/// </summary>
+		/// <param name="a">Квадратная матрица коэффициентов. Содержимое изменяется.</param>
+		/// <param name="b">Правые части или <b>null</b>. Содержимое изменяется.</param>
+		/// <returns>Значение <b>false</b>, если в каком-либо столбце не нашлось ненулевого ведущего элемента; в противном случае — значение <b>true</b>.</returns>
+		/// <remarks>Арифметика повторяет прежние Matrix.GetInverse и LinearSystem.Resolve, поэтому и нули получаются в тех же случаях.</remarks>
+		private static bool EliminateWithoutPivoting(double[][] a, double[][] b)
 		{
 			var size = a.Length;
 
-			//Оценки модулей слагаемых, из которых получен каждый элемент матрицы.
-			var bounds = new double[size][];
 			for (var i = 0; i < size; i++)
 			{
-				var row = a[i];
-				var bound = new double[size];
-				for (var j = 0; j < size; j++)
+				var pivotRow = i;
+				// ReSharper disable once CompareOfFloatsByEqualityOperator
+				while (pivotRow < size && a[pivotRow][i] == 0)
 				{
-					bound[j] = System.Math.Abs(row[j]);
+					pivotRow++;
 				}
 
-				bounds[i] = bound;
+				if (pivotRow == size)
+				{
+					return false;
+				}
+
+				if (pivotRow != i)
+				{
+					Swap(a, i, pivotRow);
+					if (b != null)
+					{
+						Swap(b, i, pivotRow);
+					}
+				}
+
+				var line = a[i];
+				var inverse = 1/line[i];
+				for (var t = i; t < size; t++)
+				{
+					line[t] *= inverse;
+				}
+
+				var lineB = b?[i];
+				if (lineB != null)
+				{
+					for (var t = 0; t < lineB.Length; t++)
+					{
+						lineB[t] *= inverse;
+					}
+				}
+
+				for (var j = i + 1; j < size; j++)
+				{
+					var row = a[j];
+					var factor = row[i];
+					for (var t = i; t < size; t++)
+					{
+						row[t] -= factor*line[t];
+					}
+
+					if (lineB != null)
+					{
+						var rowB = b[j];
+						for (var t = 0; t < rowB.Length; t++)
+						{
+							rowB[t] -= factor*lineB[t];
+						}
+					}
+				}
 			}
 
-			var tolerance = size*MachineEpsilon;
+			return true;
+		}
+
+		/// <summary>
+		/// Решает систему A·X = B методом Гаусса с выбором главного элемента по столбцу.
+		/// </summary>
+		/// <param name="a">Квадратная матрица коэффициентов. Содержимое изменяется.</param>
+		/// <param name="b">Правые части. На выходе строка i содержит значения неизвестной xᵢ.</param>
+		/// <returns>Значение <b>false</b>, если ведущий элемент оказался равен нулю; в противном случае — значение <b>true</b>.</returns>
+		private static bool SolveWithPivoting(double[][] a, double[][] b)
+		{
+			var size = a.Length;
 
 			#region Прямой ход (приведение к верхней треугольной матрице)
 
@@ -145,19 +258,16 @@ namespace Ruzil3D.Calculus
 				{
 					Swap(a, k, pivotRow);
 					Swap(b, k, pivotRow);
-					Swap(bounds, k, pivotRow);
 				}
 
-				var pivotBound = bounds[k][k];
 				// ReSharper disable once CompareOfFloatsByEqualityOperator
-				if (pivotAbs == 0 || pivotAbs <= tolerance*pivotBound && !double.IsInfinity(pivotBound))
+				if (pivotAbs == 0)
 				{
 					return false;
 				}
 
 				var pivot = a[k][k];
 				var pivotLine = a[k];
-				var pivotLineBounds = bounds[k];
 				var pivotLineB = b[k];
 
 				for (var i = k + 1; i < size; i++)
@@ -171,14 +281,10 @@ namespace Ruzil3D.Calculus
 						continue;
 					}
 
-					var absFactor = System.Math.Abs(factor);
-					var lineBounds = bounds[i];
-
 					line[k] = 0;
 					for (var j = k + 1; j < size; j++)
 					{
 						line[j] -= factor*pivotLine[j];
-						lineBounds[j] += absFactor*pivotLineBounds[j];
 					}
 
 					var lineB = b[i];
@@ -225,6 +331,17 @@ namespace Ruzil3D.Calculus
 			#endregion
 
 			return true;
+		}
+
+		private static double[][] Copy(double[][] array)
+		{
+			var result = new double[array.Length][];
+			for (var i = 0; i < array.Length; i++)
+			{
+				result[i] = (double[])array[i].Clone();
+			}
+
+			return result;
 		}
 
 		private static void Swap(double[][] array, int i, int j)

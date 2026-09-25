@@ -120,7 +120,7 @@ namespace Ruzil3D.Tests
 			Close(-0.125, jagged[1, 0]);
 			Close(0.25, jagged[1, 1]);
 
-			// Порог вырожденности относительный: плохо масштабированная, но невырожденная матрица по-прежнему обращается.
+			// Плохо масштабированная, но невырожденная матрица по-прежнему обращается.
 			var scaled = Rows(new[] {1e-300, 1}, new[] {0D, 1}).GetInverse();
 			Close(1e300, scaled[0, 0]);
 			Close(-1e300, scaled[0, 1]);
@@ -141,15 +141,73 @@ namespace Ruzil3D.Tests
 		}
 
 		[Fact]
-		public void Matrix_Inverse_NumericallySingular_Throws()
+		public void Matrix_Inverse_Singular_Throws()
 		{
-			// Прежде вырожденность проверялась точным сравнением с нулём, и вместо исключения возвращались числа порядка 4.7e16.
-			var error = Assert.Throws<DivideByZeroException>(() => Rows(new[] {0.1, 0.3}, new[] {0.7, 2.1}).GetInverse());
+			// Исключение выбрасывается в тех же случаях, что и прежде: вырожденность определяется исключением без перестановок.
+			var error = Assert.Throws<DivideByZeroException>(() => Rows(new[] {1D, 2}, new[] {2D, 4}).GetInverse());
 			Assert.Equal("Матрица вырожденная", error.Message);
 
-			Assert.Throws<DivideByZeroException>(() =>
-				Rows(new[] {.1, .2, .3}, new[] {.4, .5, .6}, new[] {.7, .8, .9}).GetInverse());
-			Assert.Throws<DivideByZeroException>(() => Rows(new[] {1D, 2}, new[] {2D, 4}).GetInverse());
+			Assert.Throws<DivideByZeroException>(() => Rows(new[] {0.5, 1.5}, new[] {0.25, 0.75}).GetInverse());
+			Assert.Throws<DivideByZeroException>(() => Rows(new[] {1D, 2, 3}, new[] {2D, 4, 6}, new[] {1D, 0, 1}).GetInverse());
+
+			// С выбором главного элемента ведущий элемент этой матрицы из-за округления получается порядка 1e-16, а не нулём.
+			Assert.Throws<DivideByZeroException>(() => Rows(new[] {1D, 2, 3}, new[] {4D, 5, 6}, new[] {7D, 8, 9}).GetInverse());
+		}
+
+		[Fact]
+		public void Matrix_Inverse_NearlySingular_ReturnsResult()
+		{
+			// Как и прежде, почти вырожденная матрица обращается без исключения. В двоичном представлении [[0.1, 0.3], [0.7, 2.1]]
+			// невырожденная, и элементы её обратной порядка 1e16. Порог «численной вырожденности» здесь не используется: он отвергал
+			// бы и плохо обусловленные системы с полезным решением, которые прежде решались.
+			var inverse = Rows(new[] {0.1, 0.3}, new[] {0.7, 2.1}).GetInverse();
+			Assert.True(System.Math.Abs(inverse[0, 0]) > 1e15);
+
+			var a = Rows(new[] {1D, 1}, new[] {1D, 1 + 4.440892098500626E-16});
+			var identityError = IdentityError(a, a.GetInverse(), 2);
+			Assert.True(identityError <= 1e-15, identityError.ToString("R"));
+		}
+
+		[Fact]
+		public void Matrix_Inverse_ZeroPivotOnlyWithPivoting_ReturnsPreviousResult()
+		{
+			// При выборе главного элемента у этой матрицы получается точный ноль (x = fl(fl(1/3)·7)), а при исключении
+			// без перестановок — нет. Как и прежде, исключение не выбрасывается и возвращается прежний результат.
+			var x = (1D/3)*7;
+			var inverse = Rows(new[] {1D, x}, new[] {3D, 7}).GetInverse();
+			Assert.Equal(BitConverter.Int64BitsToDouble(0x433C000000000000), inverse[0, 0]);
+			Assert.Equal(BitConverter.Int64BitsToDouble(unchecked((long)0xC322AAAAAAAAAAAA)), inverse[0, 1]);
+			Assert.Equal(BitConverter.Int64BitsToDouble(unchecked((long)0xC328000000000000)), inverse[1, 0]);
+			Assert.Equal(BitConverter.Int64BitsToDouble(0x4310000000000000), inverse[1, 1]);
+
+			var solution = LinearSystem.Resolve(new[] {new Linear(new[] {1, x}, 1), new Linear(new[] {3D, 7}, 2)});
+			Assert.Equal(new[] {2627099782632790D, -1125899906842624D}, solution);
+		}
+
+		[Fact]
+		public void Matrix_Inverse_DenseRandomMatrices()
+		{
+			// Хорошо обусловленные плотные матрицы без диагонального преобладания обращаются при любом размере
+			// (промежуточная версия ошибочно считала вырожденными матрицы порядка 100 и больше).
+			var random = new Random(7);
+			foreach (var size in new[] {10, 100, 150, 200})
+			{
+				var lines = new Vector[size];
+				for (var i = 0; i < size; i++)
+				{
+					var row = new double[size];
+					for (var j = 0; j < size; j++)
+					{
+						row[j] = random.NextDouble() - 0.5;
+					}
+
+					lines[i] = new Vector(row);
+				}
+
+				var a = new Matrix(lines);
+				var error = IdentityError(a, a.GetInverse(), size);
+				Assert.True(error <= 1e-10, size + ": " + error.ToString("R"));
+			}
 		}
 
 		[Fact]
@@ -196,20 +254,26 @@ namespace Ruzil3D.Tests
 		[Fact]
 		public void LinearSystem_Singular_ThrowsArithmeticException()
 		{
-			// Прежде вырожденность проверялась точным сравнением с нулём (возвращались числа порядка 1e16),
-			// а для точно вырожденной системы выбрасывалось исключение общего типа Exception.
+			// Прежде для точно вырожденной системы выбрасывалось исключение общего типа Exception.
 			var error = Assert.Throws<ArithmeticException>(() => LinearSystem.Resolve(new[]
 			{
-				new Linear(new[] {0.1, 0.3}, 1),
-				new Linear(new[] {0.3, 0.9}, 2)
+				new Linear(new[] {0.5, 1.5}, 1),
+				new Linear(new[] {0.25, 0.75}, 2)
 			}));
 			Assert.Equal("Задача вырожденная.", error.Message);
 
 			Assert.Throws<ArithmeticException>(() => LinearSystem.Resolve(new[]
 			{
-				new Linear(new[] {.1, .2, .3}, 1),
-				new Linear(new[] {.4, .5, .6}, 2),
-				new Linear(new[] {.7, .8, .9}, 4)
+				new Linear(new[] {1D, 2, 3}, 1),
+				new Linear(new[] {2D, 4, 6}, 2),
+				new Linear(new[] {1D, 0, 1}, 4)
+			}));
+
+			Assert.Throws<ArithmeticException>(() => LinearSystem.Resolve(new[]
+			{
+				new Linear(new[] {1D, 2, 3}, 1),
+				new Linear(new[] {4D, 5, 6}, 2),
+				new Linear(new[] {7D, 8, 9}, 4)
 			}));
 
 			Assert.Throws<ArithmeticException>(() => LinearSystem.Resolve(new[]
@@ -225,6 +289,54 @@ namespace Ruzil3D.Tests
 				new Linear(new[] {1D}, 2),
 				new Linear(new[] {1D, 1, 1}, 3)
 			}));
+		}
+
+		[Fact]
+		public void LinearSystem_IllConditioned_ReturnsSolution()
+		{
+			// Как и прежде, плохо обусловленная, но невырожденная система решается без исключения.
+			var x = LinearSystem.Resolve(new[]
+			{
+				new Linear(new[] {1D, 1}, 2),
+				new Linear(new[] {1D, 1 + 4.440892098500626E-16}, 2 + 4.440892098500626E-16)
+			});
+			Assert.Equal(new[] {1D, 1}, x);
+
+			// Матрица Гильберта 10×10 (число обусловленности 1.6e13): прежняя версия давала погрешность 2.8e-4.
+			const int size = 10;
+			var lines = new Linear[size];
+			for (var i = 0; i < size; i++)
+			{
+				var row = new double[size];
+				double sum = 0;
+				for (var j = 0; j < size; j++)
+				{
+					row[j] = 1D/(i + j + 1);
+					sum += row[j];
+				}
+
+				lines[i] = new Linear(row, sum);
+			}
+
+			foreach (var value in LinearSystem.Resolve(lines))
+			{
+				Assert.True(System.Math.Abs(value - 1) < 1e-2, value.ToString("R"));
+			}
+
+			// Интерполяция Эрмита по восьми узлам 10…17 (система 16×16 по степеням x): промежуточная версия считала её вырожденной.
+			var points = new PointD[8];
+			var derivatives = new PointD[8];
+			for (var i = 0; i < points.Length; i++)
+			{
+				points[i] = new PointD(10 + i, System.Math.Sin(10 + i));
+				derivatives[i] = new PointD(10 + i, System.Math.Cos(10 + i));
+			}
+
+			var polynomial = Polynomial.GetPolynomial(points, derivatives);
+			foreach (var point in points)
+			{
+				Assert.True(System.Math.Abs(polynomial.GetValue(point.X) - point.Y) < 1e-6);
+			}
 		}
 
 		[Fact]
