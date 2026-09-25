@@ -496,6 +496,11 @@ namespace Ruzil3D.Tests
 					Assert.InRange(radius, 1 - 3e-4, 1 + 3e-4);
 				}
 			}
+
+			// Прежде при огромной развёртке число участков переполняло int, и выбрасывалось OverflowException.
+			Assert.Throws<InvalidOperationException>(() => new EllipticArcCurve(1, 0, 1e12).RecastToBezierCurves());
+			Assert.Throws<InvalidOperationException>(() => new EllipticArcCurve(1, 0, double.PositiveInfinity).RecastToBezierCurves());
+			Assert.Single(new EllipticArcCurve(1, 0, double.NaN).RecastToBezierCurves());
 		}
 
 		#endregion
