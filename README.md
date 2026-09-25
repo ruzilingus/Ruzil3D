@@ -38,6 +38,13 @@ dotnet test Ruzil3D.sln -c Release
 
 Библиотека собирается под две платформы: `net35` (.NET Framework 3.5 и старые версии Unity) и `netstandard2.0` (Unity 2018+, .NET Core и .NET 5+). Тесты лежат в проекте `Ruzil3D.Tests` и автоматически запускаются в GitHub Actions при каждом изменении ветки `master` и в пулл-реквестах.
 
+Тесты в `Ruzil3D.Tests` проверяют сборку `netstandard2.0` на .NET 8. Те же тесты для сборки `net35` собираются проектом `Ruzil3D.Tests.NetFramework` (.NET Framework 4.8) и запускаются консольным исполнителем xUnit: в Windows напрямую, в Linux и macOS — через Mono (так они запускаются и в GitHub Actions):
+
+```
+dotnet build Ruzil3D.Tests.NetFramework -c Release
+mono ~/.nuget/packages/xunit.runner.console/2.9.2/tools/net472/xunit.console.exe Ruzil3D.Tests.NetFramework/bin/Release/net48/Ruzil3D.Tests.NetFramework.dll -appdomains denied -noshadow
+```
+
 Пакет NuGet с обеими сборками и XML-документацией собирается командой:
 
 ```

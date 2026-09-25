@@ -24,3 +24,25 @@ jobs:
 
       - name: Пакет NuGet
         run: dotnet pack Ruzil3D.csproj --configuration Release --no-build --output artifacts
+
+  net35-mono:
+    # Сборка net35 на Mono: те же тесты, что и для netstandard2.0 на .NET 8.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Установка Mono
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mono-devel
+
+      - name: Сборка тестов для net35
+        run: dotnet build Ruzil3D.Tests.NetFramework --configuration Release
+
+      - name: Тесты на Mono
+        run: mono ~/.nuget/packages/xunit.runner.console/2.9.2/tools/net472/xunit.console.exe Ruzil3D.Tests.NetFramework/bin/Release/net48/Ruzil3D.Tests.NetFramework.dll -appdomains denied -noshadow
