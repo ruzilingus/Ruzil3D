@@ -457,10 +457,10 @@ namespace Ruzil3D.Curves
 		/// Разбивиет кривую на два в заданной произвольным параметром точке и заполняет массивы струтур <see cref="Point3D"/>.
 		/// </summary>
 		/// <param name="parameter">Параметр точки разбиения кривой.</param>
-		/// <param name="points1">Массив узловых точек из струтур <see cref="Point3D"/> для первой кривой. Длина массива должна равняться количеству узловых точек кривой.</param>
-		/// <param name="points2">Массив узловых точек из струтур <see cref="Point3D"/> для второй кривой. Длина массива должна равняться количеству узловых точек кривой.</param>
+		/// <param name="points1">Массив узловых точек из струтур <see cref="Point3D"/> для первой кривой. Длина массива должна быть не меньше количества узловых точек кривой; заполняются первые элементы.</param>
+		/// <param name="points2">Массив узловых точек из струтур <see cref="Point3D"/> для второй кривой. Длина массива должна быть не меньше количества узловых точек кривой; заполняются первые элементы.</param>
 		/// <exception cref="ArgumentNullException">Параметр <paramref name="points1"/> или <paramref name="points2"/> имеет значение <b>null</b>.</exception>
-		/// <exception cref="ArgumentException">Длина массива <paramref name="points1"/> или <paramref name="points2"/> не равна количеству узловых точек кривой, либо это один и тот же массив.</exception>
+		/// <exception cref="ArgumentException">Длина массива <paramref name="points1"/> или <paramref name="points2"/> меньше количества узловых точек кривой, либо это один и тот же массив.</exception>
 		public void SplitPoints(double parameter, Point3D[] points1, Point3D[] points2)
 		{
 			if (points1 == null)
@@ -473,17 +473,18 @@ namespace Ruzil3D.Curves
 				throw new ArgumentNullException(nameof(points2));
 			}
 
-			//Прежде степень кривой бралась из длины массива points1: для массивов другой длины точки разбиения
-			//получались неверными (например, для массивов из пяти точек кубическая кривая делилась не в той точке).
-			if (points1.Length != Points.Length)
+			//Прежде степень кривой бралась из длины массива points1: для более длинных массивов точки разбиения получались
+			//неверными (например, для массивов из пяти точек кубическая кривая делилась не в той точке). Теперь заполняются
+			//первые элементы массивов, а более короткие массивы, как и прежде, отклоняются.
+			if (points1.Length < Points.Length)
 			{
-				throw new ArgumentException("Длина массива должна равняться количеству узловых точек кривой (" + Points.Length + ").",
+				throw new ArgumentException("Длина массива должна быть не меньше количества узловых точек кривой (" + Points.Length + ").",
 					nameof(points1));
 			}
 
-			if (points2.Length != Points.Length)
+			if (points2.Length < Points.Length)
 			{
-				throw new ArgumentException("Длина массива должна равняться количеству узловых точек кривой (" + Points.Length + ").",
+				throw new ArgumentException("Длина массива должна быть не меньше количества узловых точек кривой (" + Points.Length + ").",
 					nameof(points2));
 			}
 
@@ -496,7 +497,7 @@ namespace Ruzil3D.Curves
 			Points.CopyTo(points1, 0);
 
 			var u = 1 - parameter;
-			var max = points1.Length - 1;
+			var max = Points.Length - 1;
 			for (var i = 0; i <= max; i++)
 			{
 				points2[max - i] = points1[max];

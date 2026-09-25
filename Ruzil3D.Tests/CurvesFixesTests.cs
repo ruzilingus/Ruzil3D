@@ -274,10 +274,18 @@ namespace Ruzil3D.Tests
 		public void BernsteinCurve_SplitPointsValidatesBuffers()
 		{
 			// Прежде степень кривой бралась из длины первого массива: для массивов из пяти точек кубическая кривая
-			// делилась не в той точке.
+			// делилась не в той точке. Теперь более длинные массивы допускаются, и заполняются их первые элементы.
 			var curve = new BezierCurve(new Point3D(0, 0, 0), new Point3D(1, 2, 0), new Point3D(3, 2, 0), new Point3D(4, 0, 0));
 
-			var error = Assert.Throws<ArgumentException>(() => curve.SplitPoints(0.5, new Point3D[5], new Point3D[5]));
+			var longLeft = new Point3D[5];
+			var longRight = new Point3D[5];
+			curve.SplitPoints(0.5, longLeft, longRight);
+			TestUtil.Near(new Point3D(2, 1.5, 0), longLeft[3]);
+			TestUtil.Near(new Point3D(2, 1.5, 0), longRight[0]);
+			TestUtil.Near(new Point3D(4, 0, 0), longRight[3]);
+			Assert.Equal(Point3D.Empty, longLeft[4]);
+
+			var error = Assert.Throws<ArgumentException>(() => curve.SplitPoints(0.5, new Point3D[3], new Point3D[4]));
 			Assert.Equal("points1", error.ParamName);
 			Assert.Throws<ArgumentException>(() => curve.SplitPoints(0.5, new Point3D[4], new Point3D[3]));
 			Assert.Throws<ArgumentNullException>(() => curve.SplitPoints(0.5, null, new Point3D[4]));
@@ -638,6 +646,17 @@ namespace Ruzil3D.Tests
 		}
 
 		[Fact]
+		public void GetDistance_NonFiniteParameters_ReturnNaN()
+		{
+			// Как и прежде, для параметра NaN или бесконечности возвращается NaN: промежуточная версия выбрасывала
+			// ArgumentOutOfRangeException из Calculus.Integrate, который такие пределы отклоняет.
+			var curve = new BezierCurve(new Point3D(0, 0, 0), new Point3D(1, 2, 0), new Point3D(3, 2, 0), new Point3D(4, 0, 0));
+			Assert.True(double.IsNaN(curve.GetDistance(0, double.NaN)));
+			Assert.True(double.IsNaN(curve.GetDistance(double.PositiveInfinity, 0.5)));
+			Assert.Equal(curve.Length, curve.GetDistance(0, 1), 12);
+		}
+
+		[Fact]
 		public void DistanceCompiler_RangeChecks()
 		{
 			// Прежде выход за длину кривой приводил для отрезка к ArgumentException без имени параметра,
@@ -647,12 +666,25 @@ namespace Ruzil3D.Tests
 			var bezier = new BezierCurve(new Point3D(0, 0, 0), new Point3D(1, 2, 0), new Point3D(3, 2, 0), new Point3D(4, 0, 0));
 			var bezierCompiler = new ParametricCurveDistanceCompiler<BezierCurve>(bezier);
 
-			Assert.Equal("distance", Assert.Throws<ArgumentOutOfRangeException>(() => lineCompiler.GetValue(4.0000000000000009)).ParamName);
-			Assert.Equal("distance", Assert.Throws<ArgumentOutOfRangeException>(() => bezierCompiler.GetValue(bezier.Length*(1 + 1e-15))).ParamName);
+			Assert.Equal("distance", Assert.Throws<ArgumentOutOfRangeException>(() => lineCompiler.GetValue(4.000001)).ParamName);
+			Assert.Equal("distance", Assert.Throws<ArgumentOutOfRangeException>(() => bezierCompiler.GetValue(bezier.Length*(1 + 1e-12))).ParamName);
 			Assert.Equal("distance", Assert.Throws<ArgumentOutOfRangeException>(() => bezierCompiler.GetParameter(-1e-12)).ParamName);
 
 			TestUtil.Near(new Point3D(4, 0, 0), lineCompiler.GetValue(4));
 			TestUtil.Near(bezier.P3, bezierCompiler.GetValue(bezier.Length));
+
+			// Выход за концы на погрешность округления допускается: для дуги окружности прежде возвращался конец кривой,
+			// а i·L/N при i = N бывает больше L.
+			TestUtil.Near(new Point3D(4, 0, 0), lineCompiler.GetValue(4.0000000000000009));
+			TestUtil.Near(bezier.P3, bezierCompiler.GetValue(bezier.Length*(1 + 1e-15)));
+			TestUtil.Near(bezier.P0, bezierCompiler.GetValue(-1e-16));
+
+			var arc = new EllipticArcCurve(1.7, 0.3, 2.1);
+			var arcCompiler = new ParametricCurveDistanceCompiler<EllipticArcCurve>(arc);
+			for (var n = 1; n <= 200; n++)
+			{
+				TestUtil.Near(arc.GetValue(1), arcCompiler.GetValue(arc.Length/n*n), 1e-9);
+			}
 		}
 
 		[Fact]

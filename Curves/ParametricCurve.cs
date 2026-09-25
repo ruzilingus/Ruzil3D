@@ -104,6 +104,12 @@ namespace Ruzil3D.Curves
 				return RectificationFunction(t1) - RectificationFunction(t0);
 			}
 
+			//Integrate отклоняет бесконечные пределы и NaN, а прежде для таких параметров возвращалось NaN.
+			if (double.IsNaN(t0) || double.IsNaN(t1) || double.IsInfinity(t0) || double.IsInfinity(t1))
+			{
+				return double.NaN;
+			}
+
 			return Calculus.Calculus.Integrate(RectificationDerivativeFunction, t0, t1);
 		}
 

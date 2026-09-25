@@ -608,29 +608,54 @@ namespace Ruzil3D.Curves
 		/// </summary>
 		/// <param name="distance">Исходная дистанция: расстояние вдоль кривой от её начальной точки, от 0 до <see cref="ParametricCurve.Length"/>.</param>
 		/// <returns>Параметр кривой соответствующий указанной дистанции. Для кривой нулевой длины возвращается 0.</returns>
-		/// <exception cref="ArgumentOutOfRangeException">Дистанция меньше 0 или больше длины кривой.</exception>
-		/// <remarks>Параметр не убывает с ростом дистанции; дистанциям 0 и <see cref="ParametricCurve.Length"/> соответствуют параметры 0 и 1.</remarks>
+		/// <exception cref="ArgumentOutOfRangeException">Дистанция меньше 0 или больше длины кривой больше чем на погрешность округления.</exception>
+		/// <remarks>Параметр не убывает с ростом дистанции; дистанциям 0 и <see cref="ParametricCurve.Length"/> соответствуют параметры 0 и 1.
+		/// Дистанция, выходящая за отрезок [0, <see cref="ParametricCurve.Length"/>] не больше чем на 16 ulp длины (например, i·L/N при i = N),
+		/// считается равной ближайшему концу.</remarks>
 		public double GetParameter(double distance)
 		{
 			var approx = Approx;
 
 			//Прежде выход за пределы кривой приводил, в зависимости от типа кривой, к ArgumentException без имени
 			//параметра (из GetValue кривой) или к ArgumentOutOfRangeException для аргумента x (из интерполяции).
-			if (distance < approx.LArgument || distance > approx.RArgument)
+			//Выход на погрешность округления допускается: для дуг окружности прежде возвращался конец кривой, а i·L/N при i = N
+			//бывает больше L (у дуги с L = 2.1·0.3 уже при N = 7).
+			var tolerance = 16*MachineEpsilon*Math.Max(Math.Abs(approx.LArgument), Math.Abs(approx.RArgument));
+			if (distance < approx.LArgument)
 			{
-				throw new ArgumentOutOfRangeException(nameof(distance), distance,
-					"Дистанция должна быть от 0 до длины кривой (" + approx.RArgument + ").");
+				if (!(distance >= approx.LArgument - tolerance))
+				{
+					throw new ArgumentOutOfRangeException(nameof(distance), distance,
+						"Дистанция должна быть от 0 до длины кривой (" + approx.RArgument + ").");
+				}
+
+				distance = approx.LArgument;
+			}
+			else if (distance > approx.RArgument)
+			{
+				if (!(distance <= approx.RArgument + tolerance))
+				{
+					throw new ArgumentOutOfRangeException(nameof(distance), distance,
+						"Дистанция должна быть от 0 до длины кривой (" + approx.RArgument + ").");
+				}
+
+				distance = approx.RArgument;
 			}
 
 			return approx.GetValue(distance);
 		}
 
 		/// <summary>
+		/// Машинный эпсилон: расстояние от 1 до следующего числа двойной точности.
+		/// </summary>
+		private const double MachineEpsilon = 2.220446049250313E-16;
+
+		/// <summary>
 		/// Получает точку на кривой соответствующую указанной дистанции.
 		/// </summary>
 		/// <param name="distance">Исходная дистанция: расстояние вдоль кривой от её начальной точки, от 0 до <see cref="ParametricCurve.Length"/>.</param>
 		/// <returns>Точка на кривой соответствующую указанной дистанции. Для кривой нулевой длины возвращается её начальная точка.</returns>
-		/// <exception cref="ArgumentOutOfRangeException">Дистанция меньше 0 или больше длины кривой.</exception>
+		/// <exception cref="ArgumentOutOfRangeException">Дистанция меньше 0 или больше длины кривой больше чем на погрешность округления.</exception>
 		public Point3D GetValue(double distance)
 		{
 			return Curve.GetValue(GetParameter(distance));
