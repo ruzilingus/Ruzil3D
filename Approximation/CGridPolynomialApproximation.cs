@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Ruzil3D.Algebra;
 
 namespace Ruzil3D.Approximation
@@ -47,6 +48,19 @@ namespace Ruzil3D.Approximation
 		/// </summary>
 		/// <param name="result">Массив многочленов от переменной x, кусочно-аппроксимирующие клетки сетки.</param>
 		protected abstract void InitPolynomials(ref Polynomial[] result);
+
+		/// <summary>
+		/// Возвращает значение, показывающее, переопределён ли метод <see cref="InitPolynomials"/> в типе <paramref name="type"/>
+		/// (или в его предке) после класса библиотеки <paramref name="libraryType"/>.
+		/// </summary>
+		/// <remarks>Прежде значения интерполяции вычислялись по многочленам <see cref="GetPolynom"/>, поэтому наследник, переопределивший
+		/// <see cref="InitPolynomials"/>, менял и значения. Такие наследники по-прежнему получают значения многочленов.</remarks>
+		internal static bool OverridesInitPolynomials(Type type, Type libraryType)
+		{
+			var method = type.GetMethod(nameof(InitPolynomials), BindingFlags.Instance | BindingFlags.NonPublic, null,
+				new[] {typeof(Polynomial[]).MakeByRefType()}, null);
+			return method != null && method.DeclaringType != libraryType;
+		}
 
 		/// <summary>
 		/// Инициализирует новый экземпляр класса <see cref="CGridPolynomialApproximation"/> из перечислителя структур <see cref="PointD"/>.

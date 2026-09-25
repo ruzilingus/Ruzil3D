@@ -80,6 +80,7 @@ namespace Ruzil3D.Approximation
 		/// <exception cref="ArgumentException">Нескольким одинаковым аргументам X соответствуют разные значения Y или задано меньше двух различных узлов.</exception>
 		public CubicInterpolation(IEnumerable<PointD> points) : base(points)
 		{
+			_polynomialValues = OverridesInitPolynomials(GetType(), typeof(CubicInterpolation));
 		}
 
 		/// <summary>
@@ -92,7 +93,14 @@ namespace Ruzil3D.Approximation
 		/// <exception cref="ArgumentException">Задано меньше двух узлов или при проверке (<paramref name="check"/> = <b>true</b>) нескольким одинаковым аргументам X соответствуют разные значения Y.</exception>
 		public CubicInterpolation(PointD[] points, bool check = false) : base(points, check)
 		{
+			_polynomialValues = OverridesInitPolynomials(GetType(), typeof(CubicInterpolation));
 		}
+
+		/// <summary>
+		/// Значения вычисляются по многочленам <see cref="CGridPolynomialApproximation.GetPolynom"/>, как прежде: наследник переопределил
+		/// <see cref="InitPolynomials"/>.
+		/// </summary>
+		private readonly bool _polynomialValues;
 
 		/// <summary>
 		/// Вычисляет коэффициенты естественного кубического сплайна во всех клетках сетки.
@@ -175,12 +183,13 @@ namespace Ruzil3D.Approximation
 		/// <param name="index">Индекс клетки сетки.</param>
 		/// <param name="x">Значение аргумента.</param>
 		/// <returns>Значение кусочно-аппроксимирующего полинома соответствующее индексу и аргументу.</returns>
-		/// <remarks>Значение вычисляется по коэффициентам сплайна в локальной координате x − xᵢ, а не по многочлену <see cref="CGridPolynomialApproximation.GetPolynom"/>.</remarks>
+		/// <remarks>Значение вычисляется по коэффициентам сплайна в локальной координате x − xᵢ, а не по многочлену <see cref="CGridPolynomialApproximation.GetPolynom"/>.
+		/// Если наследник переопределил <see cref="InitPolynomials"/>, значение, как и прежде, вычисляется по многочлену.</remarks>
 		protected override double GetValue(int index, double x)
 		{
 			//Прежде значение вычислялось по многочлену от x: при x порядка 1e6 его коэффициенты порядка 1e18 почти
 			//взаимно сокращались, и ошибка в самих узлах достигала 79.
-			return Cells[index].GetValue(x);
+			return _polynomialValues ? GetPolynom(index).GetValue(x) : Cells[index].GetValue(x);
 		}
 	}
 }

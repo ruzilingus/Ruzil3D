@@ -17,6 +17,7 @@ namespace Ruzil3D.Approximation
 		/// <exception cref="ArgumentException">Нескольким одинаковым аргументам X соответствуют разные значения Y или задано меньше двух различных узлов.</exception>
 		public LinearInterpolation(IEnumerable<PointD> points) : base(points)
 		{
+			_polynomialValues = OverridesInitPolynomials(GetType(), typeof(LinearInterpolation));
 		}
 
 		/// <summary>
@@ -29,7 +30,14 @@ namespace Ruzil3D.Approximation
 		/// <exception cref="ArgumentException">Задано меньше двух узлов или при проверке (<paramref name="check"/> = <b>true</b>) нескольким одинаковым аргументам X соответствуют разные значения Y.</exception>
 		public LinearInterpolation(PointD[] points, bool check = false) : base(points, check)
 		{
+			_polynomialValues = OverridesInitPolynomials(GetType(), typeof(LinearInterpolation));
 		}
+
+		/// <summary>
+		/// Значения вычисляются по многочленам <see cref="CGridPolynomialApproximation.GetPolynom"/>, как прежде: наследник переопределил
+		/// <see cref="InitPolynomials"/>.
+		/// </summary>
+		private readonly bool _polynomialValues;
 
 		/// <summary>
 		/// Заполняет массив многочленов не выше 1 степени представленные структурами <see cref="Polynomial"/>, соответствующие кусочно-линейной аппроксимации.
@@ -41,10 +49,12 @@ namespace Ruzil3D.Approximation
 		{
 			for (var i = 1; i < Points.Length; i++)
 			{
+				//Многочлен строится по прежней формуле, а не через Polynomial.GetPolynomial, который отклоняет одинаковые X:
+				//при check = false такие узлы, как и прежде, дают многочлен с бесконечными коэффициентами или NaN, а не исключение.
 				var p0 = Points[i - 1];
 				var p1 = Points[i];
-				var polynom = Polynomial.GetPolynomial(p0, p1);
-				result[i - 1] = polynom;
+				var k = (p1.Y - p0.Y)/(p1.X - p0.X);
+				result[i - 1] = new Polynomial(p0.Y - p0.X*k, k);
 			}
 		}
 
@@ -54,9 +64,15 @@ namespace Ruzil3D.Approximation
 		/// <param name="index">Индекс клетки сетки.</param>
 		/// <param name="x">Значение аргумента.</param>
 		/// <returns>Значение кусочно-аппроксимирующего полинома соответствующее индексу и аргументу.</returns>
-		/// <remarks>Значение вычисляется в локальной координате x − xᵢ, где xᵢ — левый узел клетки, а не по многочлену <see cref="CGridPolynomialApproximation.GetPolynom"/>.</remarks>
+		/// <remarks>Значение вычисляется в локальной координате x − xᵢ, где xᵢ — левый узел клетки, а не по многочлену <see cref="CGridPolynomialApproximation.GetPolynom"/>.
+		/// Если наследник переопределил <see cref="InitPolynomials"/>, значение, как и прежде, вычисляется по многочлену.</remarks>
 		protected override double GetValue(int index, double x)
 		{
+			if (_polynomialValues)
+			{
+				return GetPolynom(index).GetValue(x);
+			}
+
 			//Прежде значение вычислялось по многочлену от x: при x порядка 1e12 его свободный член почти сокращался
 			//со вторым слагаемым, и в середине отрезка [1e12, 1e12 + 1] получалось 0.0500031 вместо 0.05.
 			var p0 = Points[index];
